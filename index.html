@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bridge Hub</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<meta name="theme-color" content="#0f7a4a">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@400;500;600;700&display=swap">
+<style>
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,#121417);--card:light-dark(#f4f5f7,#1b1e23);--ink:light-dark(#15191f,#e9ecf1);--mute:light-dark(#5b6573,#9aa4b2);--line:light-dark(#dde1e7,#2d333c);
+--acc:light-dark(#0f7a4a,#4fd197);--accInk:light-dark(#ffffff,#06180f);--bad:light-dark(#b3261e,#ff8a80);
+--disp:"Barlow Condensed","Arial Narrow",sans-serif;--body:"Barlow",system-ui,sans-serif}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--body);overflow-x:clip}
+.wrap{max-width:720px;margin:0 auto;padding:clamp(18px,4vw,40px) max(4vw,14px) 56px;display:grid;gap:16px}
+h1{font:800 clamp(32px,7vw,46px)/1.05 var(--disp);margin:0}
+h2{font:800 28px/1 var(--disp);margin:0}
+.sub{color:var(--mute);margin:4px 0 0}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.who{font-size:14px;color:var(--mute);text-align:right}
+.who button{margin-top:4px;min-height:34px;padding:4px 12px;font-size:14px}
+input[type=text],input[type=password],textarea{font:16px/1.45 var(--body);color:var(--ink);background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:11px 12px;width:100%}
+textarea{min-height:150px;resize:vertical;font-family:ui-monospace,monospace;font-size:15px}
+button{font:700 16px var(--body);min-height:44px;padding:8px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.go{background:var(--acc);border-color:var(--acc);color:var(--accInk);flex:1 1 160px}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,textarea:focus-visible,label.file:focus-within{outline:3px solid var(--acc);outline-offset:2px}
+.card{border-radius:18px;padding:16px;background:var(--card);display:grid;gap:10px}
+.tabs{display:flex;gap:6px}
+.tabs button{flex:1;border-radius:999px}
+.tabs button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.seg{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg>span{font-weight:600;color:var(--mute);font-size:14px;margin-right:4px}
+.dev{font:700 16px var(--body);min-height:42px;padding:6px 16px;border-radius:999px;border:2px solid var(--line);background:var(--bg)}
+.dev[aria-pressed=true]{background:var(--c);border-color:var(--c);color:#fff}
+.add{border-style:dashed;color:var(--mute)}
+.mgr{display:grid;gap:8px}
+.mgr .row{justify-content:space-between}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--c);margin-right:8px;vertical-align:middle}
+.box{border:2.5px solid var(--ink);border-radius:22px;padding:14px;display:grid;gap:10px;background:var(--bg)}
+.box.drag{border-color:var(--acc);background:var(--card)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+label.file{display:inline-flex;align-items:center;min-height:44px;padding:8px 16px;border-radius:12px;border:1.5px dashed var(--mute);font-weight:700;cursor:pointer}
+label.file input{position:absolute;opacity:0;width:1px;height:1px}
+.note{font-size:14px;color:var(--mute);min-height:1.4em;margin:0}
+.note.err{color:var(--bad)}
+.count{font-size:13px;color:var(--mute);margin-left:auto}
+.shelfh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:8px}
+.filt{display:flex;gap:6px;flex-wrap:wrap}
+.filt button{min-height:36px;padding:4px 12px;font-size:14px;border-radius:999px}
+.filt button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.list{display:grid;gap:10px}
+.it{border-radius:16px;padding:12px 14px;background:var(--card);border-left:6px solid var(--c,var(--line));display:grid;gap:8px}
+.meta{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;color:var(--mute)}
+.badge{font-weight:700;font-size:12.5px;padding:2px 9px;border-radius:999px;white-space:nowrap;background:var(--c);color:#fff}
+.ttl{font-weight:700;font-size:17px;overflow-wrap:anywhere}
+.txt{font:14px/1.45 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:7.5em;overflow:hidden;margin:0}
+.txt.open{max-height:none}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.acts button{min-height:40px;padding:6px 14px;font-size:15px}
+.acts .copy{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.acts .del{margin-left:auto;color:var(--bad)}
+.thumb{max-width:100%;max-height:220px;border-radius:10px;display:block}
+.empty{color:var(--mute);text-align:center;padding:28px 10px;border:1.5px dashed var(--line);border-radius:16px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+.toast.show{opacity:1}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hdr"><div><h1>Bridge Hub</h1><p class="sub">Your own private shelf. Drop text or files on one device, pick them up on another.</p></div>
+<div class="who" id="who" hidden><span id="uname"></span><br><button id="out">Sign out</button></div></header>
+
+<section class="card" id="auth" hidden>
+<div class="tabs"><button id="tIn" aria-pressed="true">Sign in</button><button id="tUp" aria-pressed="false">Create account</button></div>
+<input type="text" id="u" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20">
+<input type="password" id="p" placeholder="Password (6+ characters)" autocomplete="current-password">
+<input type="password" id="p2" placeholder="Type password again" autocomplete="new-password" hidden>
+<p class="note" id="aHint">Usernames: 3–20 letters, numbers or _. There's no password reset, so keep it somewhere safe.</p>
+<button class="go" id="aGo">Sign in</button>
+<p class="note" id="aSt"></p>
+</section>
+
+<div id="app" hidden style="display:grid;gap:16px">
+<div class="seg" role="group" aria-label="This device"><span>This device:</span><span id="devs" class="seg"></span><button class="dev add" id="addDev">+ Add device</button><button class="dev add" id="manage">Manage</button></div>
+<section class="card mgr" id="mgr" hidden>
+<b>Your devices</b>
+<div id="mlist" class="mgr"></div>
+<div class="row"><input type="text" id="newDev" placeholder="New device name, e.g. Work laptop" maxlength="40" style="flex:1 1 200px"><button class="go" id="saveDev" style="flex:0 0 auto">Add</button></div>
+</section>
+<section class="box" id="box" aria-label="Drop box">
+<input type="text" id="title" placeholder="Label (optional)" maxlength="120">
+<textarea id="text" placeholder="Paste text, a link, a list or code here"></textarea>
+<div class="row">
+<button class="go" id="send" disabled>Send text</button>
+<label class="file">Add files<input type="file" id="file" multiple></label>
+<span class="count" id="cnt"></span>
+</div>
+<p class="note" id="st"></p>
+</section>
+<div class="shelfh"><h2>On your shelf</h2><div class="filt" id="filt"></div></div>
+<p class="note">Drops clear themselves after 7 days. Files up to 10 MB.</p>
+<div class="list" id="list"><div class="empty">Loading…</div></div>
+</div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script type="module">
+import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
+const SURL='https://ksuvjhutalvwgikvsdeu.supabase.co',SKEY='sb_publishable_v60aHIwkGcr_a9UvWTb9jA_7qcffk8B';
+const DOMAIN='@users.bridgehub.app',KEEP_DAYS=7,MAXF=10*1048576;
+const sb=createClient(SURL,SKEY,{auth:{persistSession:true}});
+const $=id=>document.getElementById(id);
+const COLORS=['#1f5fbf','#8a2f8f','#0f7a4a','#c2410c','#0e7490','#b91c1c','#4d7c0f','#7c3aed','#be185d','#a16207'];
+let user=null,devices=[],items=[],cur=null,filt='all',open=new Set(),urls={},chan=null,mode='in';
+const LS=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);v===null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const color=n=>{const i=devices.findIndex(d=>d.name===n);if(i>=0)return COLORS[i%COLORS.length];let h=0;for(const c of String(n))h=(h*31+c.charCodeAt(0))|0;return COLORS[Math.abs(h)%COLORS.length]};
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('show'),1800)}
+function note(id,m,err){const s=$(id);s.textContent=m||'';s.classList.toggle('err',!!err)}
+function ago(t){const s=(Date.now()-t)/1000;if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+' min ago';if(s<86400)return Math.floor(s/3600)+' h ago';return new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+const kb=n=>n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
+
+/* ---------- auth ---------- */
+function setMode(m){mode=m;$('tIn').setAttribute('aria-pressed',m==='in');$('tUp').setAttribute('aria-pressed',m==='up');$('p2').hidden=m!=='up';$('aGo').textContent=m==='in'?'Sign in':'Create account';$('p').autocomplete=m==='in'?'current-password':'new-password';note('aSt','')}
+$('tIn').onclick=()=>setMode('in');$('tUp').onclick=()=>setMode('up');
+$('aGo').onclick=async()=>{
+  const u=$('u').value.trim().toLowerCase(),p=$('p').value;
+  if(!/^[a-z0-9_]{3,20}$/.test(u))return note('aSt','Username must be 3–20 letters, numbers or _.',true);
+  if(p.length<6)return note('aSt','Password needs at least 6 characters.',true);
+  if(mode==='up'&&p!==$('p2').value)return note('aSt','The two passwords don\'t match.',true);
+  $('aGo').disabled=true;note('aSt',mode==='in'?'Signing in…':'Creating your account…');
+  const email=u+DOMAIN;
+  const {data,error}=mode==='in'?await sb.auth.signInWithPassword({email,password:p}):await sb.auth.signUp({email,password:p,options:{data:{username:u}}});
+  $('aGo').disabled=false;
+  if(error){const m=/already registered|already exists/i.test(error.message)?'That username is taken.':/invalid login/i.test(error.message)?'Wrong username or password.':error.message;return note('aSt',m,true)}
+  if(mode==='up'&&!data.session)return note('aSt','Account made, but sign-ups need email confirmation turned off. Ask the app owner.',true);
+  $('p').value=$('p2').value='';
+};
+$('out').onclick=async()=>{await sb.auth.signOut()};
+const uname=u=>u?.user_metadata?.username||(u?.email||'').replace(DOMAIN,'');
+
+/* ---------- devices ---------- */
+async function loadDevices(){const {data,error}=await sb.from('hub_devices').select('*').order('created_at');if(error)throw error;devices=data;
+  const saved=LS('hub-dev-'+user.id);cur=devices.find(d=>d.name===saved)?saved:null;renderDevices()}
+function renderDevices(){
+  $('devs').innerHTML=devices.map(d=>`<button class="dev" style="--c:${color(d.name)}" data-d="${esc(d.name)}" aria-pressed="${d.name===cur}">${esc(d.name)}</button>`).join('');
+  $('mlist').innerHTML=devices.length?devices.map(d=>`<div class="row"><span><span class="dot" style="--c:${color(d.name)}"></span>${esc(d.name)}</span><button data-rm="${d.id}" style="color:var(--bad);min-height:36px;padding:4px 12px;font-size:14px">Remove</button></div>`).join(''):'<span class="note">No devices yet. Add one below.</span>';
+  $('filt').innerHTML=`<button data-f="all" aria-pressed="${filt==='all'}">All</button>`+devices.map(d=>`<button data-f="${esc(d.name)}" aria-pressed="${filt===d.name}">From ${esc(d.name)}</button>`).join('');
+  if(!devices.length){$('mgr').hidden=false;note('st','Add a name for this device to get started.')}
+  else if(!cur)note('st','Tap which device this is.');
+  upd();
+}
+$('devs').onclick=e=>{const b=e.target.closest('[data-d]');if(!b)return;cur=b.dataset.d;LS('hub-dev-'+user.id,cur);renderDevices();note('st','Ready.')};
+$('addDev').onclick=()=>{$('mgr').hidden=false;$('newDev').focus()};
+$('manage').onclick=()=>{$('mgr').hidden=!$('mgr').hidden};
+$('saveDev').onclick=async()=>{
+  const n=$('newDev').value.trim();if(!n)return;
+  if(devices.some(d=>d.name.toLowerCase()===n.toLowerCase()))return toast('You already have that one.');
+  const {error}=await sb.from('hub_devices').insert({name:n});
+  if(error)return toast('Could not add: '+error.message);
+  $('newDev').value='';await loadDevices();if(!cur){cur=n;LS('hub-dev-'+user.id,n);renderDevices()}toast('Added '+n);note('st','Ready.')};
+$('newDev').onkeydown=e=>{if(e.key==='Enter')$('saveDev').click()};
+$('mlist').onclick=async e=>{const b=e.target.closest('[data-rm]');if(!b)return;
+  if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent='Tap again';setTimeout(()=>{if(b.isConnected){b.dataset.sure='';b.textContent='Remove'}},3000);return}
+  const d=devices.find(x=>x.id===b.dataset.rm);await sb.from('hub_devices').delete().eq('id',b.dataset.rm);
+  if(d&&d.name===cur){cur=null;LS('hub-dev-'+user.id,null)}await loadDevices();toast('Removed')};
+$('filt').onclick=e=>{const b=e.target.closest('[data-f]');if(!b)return;filt=b.dataset.f;renderDevices();render()};
+
+/* ---------- shelf ---------- */
+const norm=r=>({id:r.id,kind:r.kind,from:r.from_device,at:new Date(r.created_at).getTime(),title:r.title||'',text:r.text||'',name:r.name,size:r.size,type:r.type,path:r.path,isText:r.is_text});
+function upd(){const n=$('text').value.length;$('cnt').textContent=n?n.toLocaleString()+' chars':'';$('send').disabled=!n||!cur}
+$('text').oninput=upd;
+async function cleanup(){
+  const cut=new Date(Date.now()-KEEP_DAYS*864e5).toISOString();
+  const {data}=await sb.from('hub_drops').select('id,path').lt('created_at',cut);
+  if(!data||!data.length)return;
+  const paths=data.filter(d=>d.path).map(d=>d.path);if(paths.length)await sb.storage.from('hub').remove(paths);
+  await sb.from('hub_drops').delete().in('id',data.map(d=>d.id));
+}
+async function loadDrops(){const {data,error}=await sb.from('hub_drops').select('*').order('created_at',{ascending:false}).limit(300);if(error)throw error;items=data.map(norm);render()}
+async function fileUrl(x){if(urls[x.id])return urls[x.id];const {data,error}=await sb.storage.from('hub').createSignedUrl(x.path,3600);if(error)throw error;return urls[x.id]=data.signedUrl}
+function render(){
+  const L=items.filter(x=>filt==='all'||x.from===filt).sort((a,b)=>b.at-a.at);
+  if(!L.length){$('list').innerHTML=`<div class="empty">${items.length?'Nothing from that device yet.':'Nothing waiting. Send something and it shows up on all your devices.'}</div>`;return}
+  $('list').innerHTML=L.map(x=>{
+    const isOpen=open.has(x.id);let body='',acts='';
+    if(x.kind==='text'){
+      body=`<pre class="txt${isOpen?' open':''}">${esc(x.text.length>4000&&!isOpen?x.text.slice(0,4000)+'…':x.text)}</pre>`;
+      acts=`<button class="copy" data-a="copy" data-id="${x.id}">Copy</button>`+(x.text.split('\n').length>5||x.text.length>400?`<button data-a="more" data-id="${x.id}">${isOpen?'Show less':'Show all'}</button>`:'');
+    }else{
+      body=/^image\//.test(x.type||'')?`<img class="thumb" data-img="${x.id}" alt="${esc(x.name)}">`:'';
+      acts=`<button data-a="openf" data-id="${x.id}">Open file</button>`+(x.isText?`<button class="copy" data-a="copyfile" data-id="${x.id}">Copy text</button>`:'');
+    }
+    const ttl=x.title||(x.kind==='file'?x.name:'');
+    const size=x.kind==='file'?' · '+kb(x.size||0):' · '+x.text.length.toLocaleString()+' chars';
+    return `<article class="it" style="--c:${color(x.from)}"><div class="meta"><span class="badge">From ${esc(x.from)}</span><span>${ago(x.at)}${size}</span></div>${ttl?`<div class="ttl">${esc(ttl)}</div>`:''}${body}<div class="acts">${acts}<button class="del" data-a="del" data-id="${x.id}">Delete</button></div></article>`;
+  }).join('');
+  document.querySelectorAll('img[data-img]').forEach(async im=>{const x=items.find(i=>i.id===im.dataset.img);if(x){try{im.src=await fileUrl(x)}catch(_){}}});
+}
+async function copyText(t){try{await navigator.clipboard.writeText(t);toast('Copied')}catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.append(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch(_){}ta.remove();toast(ok?'Copied':'Copy blocked. Tap "Show all" and select it.')}}
+$('list').onclick=async e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;const x=items.find(i=>i.id===b.dataset.id);if(!x)return;
+  if(b.dataset.a==='copy')copyText(x.text);
+  else if(b.dataset.a==='more'){open.has(x.id)?open.delete(x.id):open.add(x.id);render()}
+  else if(b.dataset.a==='openf'){try{window.open(await fileUrl(x),'_blank')}catch(_){toast('Could not load the file.')}}
+  else if(b.dataset.a==='copyfile'){try{copyText(await (await fetch(await fileUrl(x))).text())}catch(_){toast('Could not load the text.')}}
+  else if(b.dataset.a==='del'){
+    if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent='Tap again to delete';setTimeout(()=>{if(b.isConnected){b.dataset.sure='';b.textContent='Delete'}},3000);return}
+    b.disabled=true;if(x.path)await sb.storage.from('hub').remove([x.path]);
+    const {error}=await sb.from('hub_drops').delete().eq('id',x.id);
+    if(error){b.disabled=false;toast('Could not delete.')}else{items=items.filter(i=>i.id!==x.id);render();toast('Deleted')}
+  }
+};
+$('send').onclick=async()=>{
+  const text=$('text').value,title=$('title').value.trim();if(!text||!cur)return;
+  $('send').disabled=true;note('st','Sending…');
+  const {error}=await sb.from('hub_drops').insert({kind:'text',from_device:cur,title,text});
+  if(error)note('st','Not sent: '+error.message,true);else{$('text').value='';$('title').value='';note('st','Sent to your shelf.');toast('Sent')}
+  upd();
+};
+async function sendFiles(fs){
+  if(!cur){note('st','Tap which device this is first.',true);return}
+  const title=$('title').value.trim();let n=0;
+  for(const f of fs){if(f.size>MAXF){note('st',f.name+' is over 10 MB.',true);continue}
+    note('st','Uploading '+f.name+'…');
+    const path=user.id+'/'+Date.now().toString(36)+'-'+(f.name||'file').replace(/[^\w.-]+/g,'-');
+    let {error}=await sb.storage.from('hub').upload(path,f,{contentType:f.type||'application/octet-stream'});
+    if(!error)({error}=await sb.from('hub_drops').insert({kind:'file',from_device:cur,title,name:f.name||'file',size:f.size,type:f.type||'',path,is_text:/^text\/|json|markdown|csv/.test(f.type||'')}));
+    if(error)note('st','Could not upload '+f.name+': '+error.message,true);else n++}
+  if(n){$('title').value='';note('st',n+' file'+(n>1?'s':'')+' sent.');toast('Sent')}
+}
+$('file').onchange=()=>{sendFiles([...$('file').files]);$('file').value=''};
+const box=$('box');
+box.addEventListener('dragover',e=>{e.preventDefault();box.classList.add('drag')});
+box.addEventListener('dragleave',()=>box.classList.remove('drag'));
+box.addEventListener('drop',e=>{e.preventDefault();box.classList.remove('drag');if(e.dataTransfer.files.length)sendFiles([...e.dataTransfer.files])});
+
+/* ---------- session ---------- */
+async function enter(){
+  $('auth').hidden=true;$('app').hidden=false;$('who').hidden=false;$('uname').textContent='@'+uname(user);
+  try{await loadDevices();await cleanup();await loadDrops()}catch(e){note('st','Could not load: '+e.message,true);return}
+  if(chan)sb.removeChannel(chan);
+  chan=sb.channel('hub-'+user.id).on('postgres_changes',{event:'*',schema:'public',table:'hub_drops',filter:'user_id=eq.'+user.id},p=>{
+    if(p.eventType==='INSERT'){if(!items.some(i=>i.id===p.new.id)){items.push(norm(p.new));if(p.new.from_device!==cur)toast('New drop from '+p.new.from_device)}}
+    else if(p.eventType==='DELETE')items=items.filter(i=>i.id!==p.old.id);
+    render()}).subscribe();
+}
+function leave(){if(chan){sb.removeChannel(chan);chan=null}items=[];devices=[];cur=null;$('app').hidden=true;$('who').hidden=true;$('auth').hidden=false;setMode('in')}
+sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;if(user&&user.id!==was)enter();if(!user&&was)leave()});
+const {data:{session}}=await sb.auth.getSession();user=session?.user||null;user?enter():leave();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)loadDrops().catch(()=>{})});
+setInterval(()=>{if(user)render()},60000);
+</script>
+</body>
+</html>
