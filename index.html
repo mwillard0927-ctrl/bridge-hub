@@ -68,6 +68,9 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.show{opacity:1}
 [hidden]{display:none!important}
+.tabs2{display:flex;gap:8px}.tabs2 button{flex:1;border-radius:999px;font:800 18px var(--disp)}
+.tabs2 button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.bdn{display:inline-block;min-width:22px;padding:0 6px;border-radius:999px;background:#e11d48;color:#fff;font:700 13px/22px var(--body);text-align:center}
 </style>
 </head>
 <body>
@@ -86,6 +89,8 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 </section>
 
 <div id="app" hidden style="display:grid;gap:16px">
+<nav class="tabs2"><button id="tabShelf" aria-pressed="true">Shelf</button><button id="tabBoard" aria-pressed="false">Boards <span id="bdN" class="bdn" hidden></span></button></nav>
+<div id="vShelf" style="display:grid;gap:16px">
 <div class="seg" role="group" aria-label="This device"><span>This device:</span><span id="devs" class="seg"></span><button class="dev add" id="addDev">+ Add device</button><button class="dev add" id="manage">Manage</button></div>
 <section class="card mgr" id="mgr" hidden>
 <b>Your devices</b>
@@ -97,6 +102,7 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 <textarea id="text" placeholder="Paste text, a link, a list or code here"></textarea>
 <div class="row">
 <button class="go" id="send" disabled>Send text</button>
+<select id="dest" aria-label="Send to" style="font:600 15px var(--body);min-height:44px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);padding:0 10px"><option value="">→ Shelf</option></select>
 <label class="file">Add files<input type="file" id="file" multiple></label>
 <span class="count" id="cnt"></span>
 </div>
@@ -106,11 +112,14 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 <p class="note">Drops clear themselves after 7 days. Files up to 10 MB.</p>
 <div class="list" id="list"><div class="empty">Loading…</div></div>
 </div>
+<div id="vBoard" hidden></div>
+</div>
 </div>
 <div class="toast" id="toast" role="status"></div>
 
 <script type="module">
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
+import {mountBoard} from './board.js';
 const SURL='https://ksuvjhutalvwgikvsdeu.supabase.co',SKEY='sb_publishable_v60aHIwkGcr_a9UvWTb9jA_7qcffk8B';
 const DOMAIN='@users.bridgehub.app',KEEP_DAYS=7,MAXF=10*1048576;
 const sb=createClient(SURL,SKEY,{auth:{persistSession:true}});
@@ -219,6 +228,7 @@ $('list').onclick=async e=>{
 $('send').onclick=async()=>{
   const text=$('text').value,title=$('title').value.trim();if(!text||!cur)return;
   $('send').disabled=true;note('st','Sending…');
+  if($('dest').value){try{await board.postTo($('dest').value,{title:title||text.split('\n')[0].slice(0,140),body:text});$('text').value='';$('title').value='';note('st','Posted to the board.');toast('Posted')}catch(e){note('st','Not posted: '+e.message,true)}upd();return}
   const {error}=await sb.from('hub_drops').insert({kind:'text',from_device:cur,title,text});
   if(error)note('st','Not sent: '+error.message,true);else{$('text').value='';$('title').value='';note('st','Sent to your shelf.');toast('Sent')}
   upd();
@@ -226,6 +236,7 @@ $('send').onclick=async()=>{
 async function sendFiles(fs){
   if(!cur){note('st','Tap which device this is first.',true);return}
   const title=$('title').value.trim();let n=0;
+  if($('dest').value){for(const f of fs){note('st','Uploading '+f.name+'…');try{await board.postTo($('dest').value,{title:title||f.name,body:'',file:f});n++}catch(e){note('st','Could not post '+f.name+': '+e.message,true)}}if(n){$('title').value='';note('st',n+' file post'+(n>1?'s':'')+' added to the board.');toast('Posted')}return}
   for(const f of fs){if(f.size>MAXF){note('st',f.name+' is over 10 MB.',true);continue}
     note('st','Uploading '+f.name+'…');
     const path=user.id+'/'+Date.now().toString(36)+'-'+(f.name||'file').replace(/[^\w.-]+/g,'-');
@@ -240,9 +251,17 @@ box.addEventListener('dragover',e=>{e.preventDefault();box.classList.add('drag')
 box.addEventListener('dragleave',()=>box.classList.remove('drag'));
 box.addEventListener('drop',e=>{e.preventDefault();box.classList.remove('drag');if(e.dataTransfer.files.length)sendFiles([...e.dataTransfer.files])});
 
+/* ---------- boards ---------- */
+let board=null;
+function showTab(b){$('tabShelf').setAttribute('aria-pressed',!b);$('tabBoard').setAttribute('aria-pressed',b);$('vShelf').hidden=b;$('vBoard').hidden=!b;if(b&&board)board.refresh()}
+$('tabShelf').onclick=()=>showTab(false);$('tabBoard').onclick=()=>showTab(true);
+function syncDest(){const d=$('dest'),v=d.value;d.innerHTML='<option value="">→ Shelf</option>'+(board?board.projects():[]).map(p=>`<option value="${p.id}">→ Board: ${esc(p.name)}</option>`).join('');d.value=[...d.options].some(o=>o.value===v)?v:''}
+$('dest').onfocus=syncDest;
+
 /* ---------- session ---------- */
 async function enter(){
   $('auth').hidden=true;$('app').hidden=false;$('who').hidden=false;$('uname').textContent='@'+uname(user);
+  if(!board)board=mountBoard({sb,user,displayName:uname(user),root:$('vBoard'),toast,onUnread:n=>{$('bdN').hidden=!n;$('bdN').textContent=n;syncDest()}});
   try{await loadDevices();await cleanup();await loadDrops()}catch(e){note('st','Could not load: '+e.message,true);return}
   if(chan)sb.removeChannel(chan);
   chan=sb.channel('hub-'+user.id).on('postgres_changes',{event:'*',schema:'public',table:'hub_drops',filter:'user_id=eq.'+user.id},p=>{
@@ -250,7 +269,7 @@ async function enter(){
     else if(p.eventType==='DELETE')items=items.filter(i=>i.id!==p.old.id);
     render()}).subscribe();
 }
-function leave(){if(chan){sb.removeChannel(chan);chan=null}items=[];devices=[];cur=null;$('app').hidden=true;$('who').hidden=true;$('auth').hidden=false;setMode('in')}
+function leave(){if(board){board.destroy();board=null}showTab(false);if(chan){sb.removeChannel(chan);chan=null}items=[];devices=[];cur=null;$('app').hidden=true;$('who').hidden=true;$('auth').hidden=false;setMode('in')}
 sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;if(user&&user.id!==was)enter();if(!user&&was)leave()});
 const {data:{session}}=await sb.auth.getSession();user=session?.user||null;user?enter():leave();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)loadDrops().catch(()=>{})});
