@@ -444,7 +444,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     else if (x === 'delproj') { if (!confirm2(b, 'Tap again — deletes everything')) return; const {error} = await sb.rpc('hub_project_admin', {p_token: token(), p_project: cur, p_action: 'delete'}); if (error) throw error; cur = null; tab = 'board'; await refresh(); }
   }
 
-  function syncTags() { root.querySelectorAll('.tagbar').forEach(bar => { const v = root.querySelector('#' + bar.dataset.for)?.value || ''; bar.querySelectorAll('.tg').forEach(b => b.setAttribute('aria-pressed', hasTag(v, b.dataset.tag))); }); }
+  function syncTags() { root.querySelectorAll('.tagbar').forEach(bar => { const v = root.querySelector('#' + bar.dataset.for)?.value || ''; bar.querySelectorAll('.tg[data-tag]').forEach(b => b.setAttribute('aria-pressed', hasTag(v, b.dataset.tag))); }); }
   let qT = null;
   root.addEventListener('change', e => { if (e.target.id === 'bd-qu') { qUser = e.target.value; render(); } });
   root.addEventListener('input', e => { if (e.target.id === 'bd-q') { q = e.target.value; clearTimeout(qT); qT = setTimeout(render, 250); } if (e.target.id === 'bd-b' || e.target.id === 'bd-r') syncTags(); });
