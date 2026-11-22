@@ -51,6 +51,10 @@ const CSS = `
 .bd details>summary{cursor:pointer;font-weight:700;min-height:32px}
 .bd .act{font-size:14px;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}
 .bd .act:last-child{border:0}
+.bd .tagbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--mute)}
+.bd .tg{min-height:32px;padding:2px 10px;font:700 13px var(--body,system-ui);border-radius:999px;border:1.5px dashed var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+.bd .tg[aria-pressed=true]{background:#facc15;border:1.5px solid #facc15;color:#111}
+.bd .tagged{font-size:13px;color:var(--ink)}
 `;
 
 export function mountBoard({sb, user, displayName, root, device = () => '', devices = () => [], onUnread = () => {}, toast = () => {}}) {
@@ -69,6 +73,12 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   const audience = p => { const pk = keyOf(p.user_id, p.device); return [...new Set([...devices().map(d => 'd:' + d), ...members.filter(m => m.user_id !== me).map(m => 'u:' + m.user_id)])].filter(k => k !== pk); };
   const mineHere = p => p.user_id === me && (p.device || '') === dev();
   const seenHere = p => views.some(v => v.post_id === p.id && v.user_id === me && (v.device || '') === dev());
+  const handle = n => '@' + n.trim().replace(/\s+/g, '_');
+  const people = () => [...new Set([...devices(), ...members.filter(m => m.user_id !== me).map(m => nm(m.user_id))].filter(Boolean))];
+  const hasTag = (t, n) => new RegExp(reEsc(handle(n)) + '(?![\\w])', 'i').test(t || '');
+  const tagsIn = t => people().filter(n => hasTag(t, n));
+  const tagBar = target => { const L = people(); if (!L.length) return ''; const cur = root.querySelector('#' + target)?.value || '';
+    return `<div class="tagbar" data-for="${target}"><span>Tag:</span>${L.map(n => `<button type="button" class="tg" data-tag="${esc(n)}" aria-pressed="${hasTag(cur, n)}">${esc(handle(n))}</button>`).join('')}</div>`; };
   const isUnread = p => !mineHere(p) && !seenHere(p) && p.status === 'open';
   const isAdmin = () => members.some(m => m.user_id === me && m.role === 'admin');
   const reEsc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '_?');
@@ -136,6 +146,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     Object.entries(keep).forEach(([id, v]) => { const el = root.querySelector('#' + id); if (el) el.value = v; });
     if (compOpen && root.querySelector('#bd-compose')) root.querySelector('#bd-compose').open = true;
     if (act && root.querySelector('#' + act)) root.querySelector('#' + act).focus();
+    syncTags();
   }
   function draw() {
     const bar = `<div class="pbar">${projects.map(p => `<button class="pchip" data-p="${p.id}" aria-pressed="${p.id === cur}">${esc(p.name)}${unread[p.id] ? `<span class="n">${unread[p.id]}</span>` : ''}</button>`).join('')}
@@ -159,7 +170,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
       <div class="ph"><span class="tag">${esc(p.tag || 'Note')}</span>${isNew ? '<span class="new">NEW</span>' : ''}${p.pinned ? '📌' : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(who(p))} · ${ago(p.created_at)}</span></div>
       <div class="pt">${hl(p.title)}</div>
       ${p.body ? `<div class="pb">${hl(p.body.length > 180 ? p.body.slice(0, 180) + '…' : p.body)}</div>` : ''}
-      <div class="pf"><span>💬 ${rc}</span><span>👁 ${seenN.length ? 'Seen by ' + esc(seenN.map(label).join(', ')) : 'Not seen yet'}${waiting > 0 ? ' · waiting on ' + waiting : ''}</span>${p.due ? `<span class="${late ? 'late' : ''}">📅 ${late ? 'Overdue · ' : 'Due '}${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}${p.file_name ? '<span>📎 ' + esc(p.file_name) + '</span>' : ''}</div></article>`;
+      <div class="pf"><span>💬 ${rc}</span><span>👁 ${seenN.length ? 'Seen by ' + esc(seenN.map(label).join(', ')) : 'Not seen yet'}${waiting > 0 ? ' · waiting on ' + waiting : ''}</span>${p.due ? `<span class="${late ? 'late' : ''}">📅 ${late ? 'Overdue · ' : 'Due '}${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}${p.file_name ? '<span>📎 ' + esc(p.file_name) + '</span>' : ''}${(() => { const t = tagsIn(p.title + ' ' + (p.body || '')); return t.length ? `<span class="tagged">🏷 ${esc(t.join(', '))}</span>` : '' })()}</div></article>`;
   }
   function board() {
     let L = posts;
@@ -171,7 +182,8 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     const res = L.filter(p => p.status === 'resolved');
     const compose = `<details class="panel" id="bd-compose"><summary>＋ New post</summary>
       <input type="text" id="bd-t" placeholder="Title" maxlength="140">
-      <textarea id="bd-b" placeholder="Details… use @name to call someone out"></textarea>
+      ${tagBar('bd-b')}
+      <textarea id="bd-b" placeholder="Details… tap a name above to tag them"></textarea>
       <div class="row"><select id="bd-tag" style="flex:1 1 120px">${TAGS.map(t => `<option>${t}</option>`).join('')}</select>
       <label style="flex:1 1 150px;font-size:13px;color:var(--mute)">Due (optional)<input type="date" id="bd-due"></label></div>
       <div class="row"><input type="file" id="bd-f" style="flex:1 1 200px;font-size:14px"><button class="go" data-x="post" style="flex:1 1 140px">Post to board</button></div></details>`;
@@ -205,7 +217,8 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
       <div class="sec">Conversation (${replies.filter(r => r.post_id === p.id).length})</div>
       ${tree(p.id, null, 0) || '<div class="empty" style="padding:14px">No replies yet.</div>'}
       <div class="panel" id="bd-reply">${rt ? `<div class="row" style="font-size:14px;color:var(--mute)">Replying to <b style="color:var(--ink)">${esc(who(rt))}</b><button data-x="cancelrt" style="min-height:30px;padding:2px 10px;font-size:13px">Cancel</button></div>` : ''}
-      <textarea id="bd-r" placeholder="Write a reply… @name to mention"></textarea>
+      ${tagBar('bd-r')}
+      <textarea id="bd-r" placeholder="Write a reply… tap a name above to tag them"></textarea>
       <div class="row"><input type="file" id="bd-rf" style="flex:1 1 200px;font-size:14px"><button class="go" data-x="reply" style="flex:1 1 140px">Send reply</button></div></div></div>`;
   }
   function activity() {
@@ -231,6 +244,12 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   root.addEventListener('click', async e => {
     const t = e.target.closest('button,[data-open],[data-file],a'); if (!t || busy) return;
     const d = t.dataset;
+    if (d.tag) { const bar = t.closest('.tagbar'), ta = root.querySelector('#' + bar.dataset.for); if (!ta) return;
+      const h = handle(d.tag);
+      if (hasTag(ta.value, d.tag)) ta.value = ta.value.replace(new RegExp('\\s?' + reEsc(h) + '(?![\\w])', 'gi'), '').trimStart();
+      else { const pos = ta.selectionStart ?? ta.value.length, before = ta.value.slice(0, pos), after = ta.value.slice(pos);
+        const ins = (before && !/\s$/.test(before) ? ' ' : '') + h + ' '; ta.value = before + ins + after; ta.selectionStart = ta.selectionEnd = (before + ins).length; }
+      syncTags(); ta.focus(); return; }
     try {
       if (d.p) { cur = d.p; try { localStorage.setItem('bd-cur-' + me, cur) } catch (_) {} openId = null; replyTo = null; await loadProject(); render(); }
       else if (d.t) { tab = d.t; render(); }
@@ -280,6 +299,9 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     else if (x === 'leave') { if (!confirm2(b, 'Tap again to leave')) return; await sb.from('hub_members').delete().eq('project_id', cur).eq('user_id', me); cur = null; tab = 'board'; await refresh(); }
     else if (x === 'delproj') { if (!confirm2(b, 'Tap again — deletes everything')) return; await sb.from('hub_projects').delete().eq('id', cur); cur = null; tab = 'board'; await refresh(); }
   }
+
+  function syncTags() { root.querySelectorAll('.tagbar').forEach(bar => { const v = root.querySelector('#' + bar.dataset.for)?.value || ''; bar.querySelectorAll('.tg').forEach(b => b.setAttribute('aria-pressed', hasTag(v, b.dataset.tag))); }); }
+  root.addEventListener('input', e => { if (e.target.id === 'bd-b' || e.target.id === 'bd-r') syncTags(); });
 
   /* ---------- live ---------- */
   function live() {
