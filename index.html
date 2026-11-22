@@ -269,7 +269,7 @@ $('list').onclick=async e=>{
 $('send').onclick=async()=>{
   const text=$('text').value,title=$('title').value.trim();if(!text||!cur)return;
   $('send').disabled=true;note('st','Sending…');
-  if($('dest').value){try{await board.postTo($('dest').value,{title:title||text.split('\n')[0].slice(0,140),body:text,recipients:shelfRecip()});shelfExcl=new Set();renderAud();$('text').value='';$('title').value='';note('st',shelfRecip()===null?'Posted to the board.':'Sent privately.');toast('Posted')}catch(e){note('st','Not posted: '+e.message,true)}upd();return}
+  if($('dest').value){try{await board.postTo($('dest').value,{title:title||text.split('\n')[0].slice(0,140),body:text,recipients:shelfRecip()});const wasPriv=shelfRecip()!==null;shelfExcl=new Set();renderAud();$('text').value='';$('title').value='';note('st',wasPriv?'Sent privately.':'Posted.');toast('Posted')}catch(e){note('st','Not posted: '+e.message,true)}upd();return}
   const {error}=await sb.from('hub_drops').insert({kind:'text',from_device:cur,title,text});
   if(error)note('st','Not sent: '+error.message,true);else{$('text').value='';$('title').value='';note('st','Sent to your shelf.');toast('Sent')}
   upd();
@@ -297,11 +297,12 @@ let board=null;
 function showTab(b){$('tabShelf').setAttribute('aria-pressed',!b);$('tabBoard').setAttribute('aria-pressed',b);$('vShelf').hidden=b;$('vBoard').hidden=!b;if(b&&board)board.refresh()}
 $('tabShelf').onclick=()=>showTab(false);$('tabBoard').onclick=()=>showTab(true);
 let shelfExcl=new Set(),destTouched=false;
-function syncDest(){const d=$('dest'),v=d.value;const ps=board?board.projects():[];d.innerHTML=ps.map(p=>`<option value="${p.id}">→ Board: ${esc(p.name)}</option>`).join('')+'<option value="">→ Shelf only</option>';
+function syncDest(){const d=$('dest'),v=d.value;const ps=board?board.projects():[];d.innerHTML=ps.map(p=>`<option value="${p.id}">→ ${p.allowed?'🔒 ':''}${esc(p.name)}</option>`).join('')+'<option value="">→ Shelf only</option>';
   d.value=destTouched&&[...d.options].some(o=>o.value===v)?v:(ps[0]?.id||'');renderAud()}
-function shelfRecip(){const L=devices.map(x=>x.name).filter(n=>n!==cur);return L.every(n=>!shelfExcl.has(n))?null:L.filter(n=>!shelfExcl.has(n))}
+function audList(){const pr=board?board.projects().find(p=>p.id===$('dest').value):null;let L=devices.map(x=>x.name).filter(n=>n!==cur);if(pr&&pr.allowed)L=L.filter(n=>pr.allowed.some(a=>a.toLowerCase()===n.toLowerCase()));return L}
+function shelfRecip(){const L=audList();return L.every(n=>!shelfExcl.has(n))?null:L.filter(n=>!shelfExcl.has(n))}
 function renderAud(){const A=$('aud');if(!$('dest').value){A.innerHTML='<span>Shelf drops are visible to every device on this login.</span>';return}
-  const L=devices.map(x=>x.name).filter(n=>n!==cur);if(!L.length){A.innerHTML='';return}
+  const L=audList();if(!L.length){A.innerHTML='';return}
   A.innerHTML='<span>Who sees it:</span>'+L.map(n=>`<button type="button" class="au2" data-au="${esc(n)}" aria-pressed="${!shelfExcl.has(n)}">${esc(n)}</button>`).join('')+`<b style="color:var(--ink)">${shelfRecip()?'🔒 Private':'🌐 Whole board'}</b>`}
 $('aud').onclick=e=>{const b=e.target.closest('[data-au]');if(!b)return;const n=b.dataset.au;shelfExcl.has(n)?shelfExcl.delete(n):shelfExcl.add(n);renderAud()};
 $('dest').onchange=()=>{destTouched=true;renderAud()};

@@ -63,7 +63,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   if (!document.getElementById('bd-css')) { const st = document.createElement('style'); st.id = 'bd-css'; st.textContent = CSS; document.head.append(st); }
   root.classList.add('bd');
   const me = user.id, myName = (displayName || 'user').toLowerCase();
-  let myViews = new Set(), opens = [], lastSeen = {}, prevReads = null, newReads = 0, excl = new Set(), autoMade = false, projects = [], cur = null, members = [], names = {}, posts = [], replies = [], views = [], tab = 'board', filt = 'all', openId = null, replyTo = null, unread = {}, chan = null, urls = {}, busy = false, tmr = null;
+  let pExcl = new Set(), eExcl = new Set(), myViews = new Set(), opens = [], lastSeen = {}, prevReads = null, newReads = 0, excl = new Set(), autoMade = false, projects = [], cur = null, members = [], names = {}, posts = [], replies = [], views = [], tab = 'board', filt = 'all', openId = null, replyTo = null, unread = {}, chan = null, urls = {}, busy = false, tmr = null;
   try { cur = localStorage.getItem('bd-cur-' + me) } catch (_) {}
 
   const nm = id => names[id] || 'someone';
@@ -72,7 +72,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   const label = k => k.startsWith('d:') ? (k.slice(2) || 'this account') : nm(k.slice(2));
   const who = o => o.user_id === me ? (o.device || displayName) : nm(o.user_id) + (o.device ? ' · ' + o.device : '');
   const viewedBy = pid => [...new Set(views.filter(v => v.post_id === pid).map(v => keyOf(v.user_id, v.device)))];
-  const audience = p => { const pk = keyOf(p.user_id, p.device); return [...new Set([...(p.recipients || devices()).map(d => 'd:' + d), ...members.filter(m => m.user_id !== me).map(m => 'u:' + m.user_id)])].filter(k => k !== pk); };
+  const audience = p => { const pk = keyOf(p.user_id, p.device); return [...new Set([...(p.recipients || P()?.allowed || devices()).map(d => 'd:' + d), ...members.filter(m => m.user_id !== me).map(m => 'u:' + m.user_id)])].filter(k => k !== pk); };
   const mineHere = p => p.user_id === me && (p.device || '') === dev();
   const seenHere = p => myViews.has(p.id);
   const handle = n => '@' + n.trim().replace(/\s+/g, '_');
@@ -82,9 +82,10 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   const tagBar = target => { const L = people(); if (!L.length) return ''; const cur = root.querySelector('#' + target)?.value || '';
     return `<div class="tagbar" data-for="${target}"><span>Tag:</span>${L.map(n => `<button type="button" class="tg" data-tag="${esc(n)}" aria-pressed="${hasTag(cur, n)}">${esc(handle(n))}</button>`).join('')}</div>`; };
   const others = () => devices().filter(n => n && n !== dev());
-  const audBar = () => { const L = others(); if (!L.length) return ''; const allOn = L.every(n => !excl.has(n));
+  const inProj = () => { const al = P()?.allowed; return al ? others().filter(n => al.some(a => a.toLowerCase() === n.toLowerCase())) : others(); };
+  const audBar = () => { const L = inProj(); if (!L.length) return ''; const allOn = L.every(n => !excl.has(n));
     return `<div class="tagbar aud"><span>Who sees it:</span>${L.map(n => `<button type="button" class="tg au" data-aud="${esc(n)}" aria-pressed="${!excl.has(n)}">${esc(n)}</button>`).join('')}<b style="font-size:13px;color:var(--ink)">${allOn ? '🌐 Whole board' : '🔒 Private'}</b></div>`; };
-  const recipFromExcl = () => { const L = others(); return L.every(n => !excl.has(n)) ? null : L.filter(n => !excl.has(n)); };
+  const recipFromExcl = () => { const L = inProj(); return L.every(n => !excl.has(n)) ? null : L.filter(n => !excl.has(n)); };
   const track = p => { const aud = audience(p), out = {read: [], since: [], not: []};
     aud.forEach(k => { const v = views.filter(x => keyOf(x.user_id, x.device) === k && x.post_id === p.id).sort((a, b) => new Date(a.viewed_at) - new Date(b.viewed_at))[0];
       if (v) return out.read.push({k, at: v.viewed_at});
@@ -92,6 +93,9 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
       if (ls && new Date(ls) > new Date(p.created_at)) out.since.push({k, at: ls}); else out.not.push({k, at: ls}); });
     return out; };
   const tm = t => t ? new Date(t).toLocaleString('en-US', {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}) : 'never';
+  const projChips = (sel, attr) => { const L = others(); if (!L.length) return '<span>No other devices yet.</span>';
+    return '<span>Who can see it:</span>' + L.map(n => `<button type="button" class="tg au" ${attr}="${esc(n)}" aria-pressed="${!sel.has(n)}">${esc(n)}</button>`).join('') + `<b style="font-size:13px;color:var(--ink)">${L.every(n => !sel.has(n)) ? '🌐 All devices' : '🔒 Only selected'}</b>`; };
+  const newProjForm = () => `<div class="panel"><b>Start a project</b><div class="row"><input type="text" id="bd-nx" placeholder="Project name" maxlength="60" style="flex:1 1 200px"><button class="go" data-x="new-go">Create</button></div><div class="tagbar" id="bd-pch">${projChips(pExcl, 'data-pd')}</div></div>`;
   const isUnread = p => !mineHere(p) && !seenHere(p) && p.status === 'open';
   const isAdmin = () => members.some(m => m.user_id === me && m.role === 'admin');
   const reEsc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '_?');
@@ -101,9 +105,9 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
 
   async function upsertProfile() { await sb.from('hub_profiles').upsert({user_id: me, username: displayName, updated_at: new Date().toISOString()}); }
   async function loadProjects() {
-    const {data} = await sb.from('hub_projects').select('*').order('created_at');
+    const {data} = token() ? await sb.rpc('hub_my_projects', {p_token: token()}) : await sb.from('hub_projects').select('*').order('created_at');
     projects = data || [];
-    if (!projects.length && !autoMade) { autoMade = true; const {data} = await sb.rpc('hub_create_project', {p_name: displayName + "'s board", p_token: token()}); if (data) { projects = [data]; } }
+    if (!projects.length && !autoMade) { autoMade = true; const {data} = await sb.rpc('hub_create_project', {p_name: displayName + "'s board", p_token: token() || null}); if (data) { projects = [data]; } }
     if (!projects.some(p => p.id === cur)) cur = projects[0]?.id || null;
   }
   async function loadUnread() {
@@ -172,11 +176,11 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     syncTags();
   }
   function draw() {
-    const bar = `<div class="pbar">${projects.map(p => `<button class="pchip" data-p="${p.id}" aria-pressed="${p.id === cur}">${esc(p.name)}${unread[p.id] ? `<span class="n">${unread[p.id]}</span>` : ''}</button>`).join('')}
-      ${isManager() ? '<button class="pchip ghost" data-x="new">+ New project</button><button class="pchip ghost" data-x="join">Join with code</button>' : ''}</div>
+    const bar = `<div class="pbar">${projects.map(p => `<button class="pchip" data-p="${p.id}" aria-pressed="${p.id === cur}">${p.allowed ? '🔒 ' : ''}${esc(p.name)}${unread[p.id] ? `<span class="n">${unread[p.id]}</span>` : ''}</button>`).join('')}
+      ${token() ? '<button class="pchip ghost" data-x="new">+ New project</button>' : ''}</div>
       <div id="bd-form"></div>`;
-    if (!projects.length) { root.innerHTML = bar + `<div class="empty">No boards yet. The manager device can start one with <b>+ New project</b> or join one with a code.</div>`; return; }
-    const subtabs = `<div class="sub">${[['board', 'Board'], ['activity', 'Activity'], ['files', 'Files'], ['members', 'Members']].map(([k, l]) => `<button data-t="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
+    if (!projects.length) { root.innerHTML = bar + `<div class="empty">No projects yet. Tap <b>+ New project</b> to start one.</div>`; return; }
+    const subtabs = `<div class="sub">${[['board', 'Board'], ['activity', 'Activity'], ['files', 'Files'], ['members', 'Access']].map(([k, l]) => `<button data-t="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
     let body = '';
     if (openId) body = detail(); else if (tab === 'board') body = board(); else if (tab === 'activity') body = activity(); else if (tab === 'files') body = files(); else body = membersView();
     root.innerHTML = bar + (openId ? '' : subtabs) + body;
@@ -263,10 +267,13 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     return `<div class="panel">${f.length ? f.map(x => `<div class="act" style="cursor:default"><span class="flink" data-file="${esc(x.file_path)}" data-fpost="${x.pid}">📎 ${esc(x.file_name)}</span> <span style="color:var(--mute);font-size:13px">${kb(x.file_size || 0)} · ${esc(who(x))} · ${ago(x.created_at)} · in <a href="#" data-open="${x.pid}" style="color:var(--ink)">${esc(x.from || 'post')}</a></span></div>`).join('') : '<span style="color:var(--mute)">No files shared yet.</span>'}</div>`;
   }
   function membersView() {
-    const p = P(), adm = isAdmin() && isManager();
-    return `${isManager() ? '' : '<div class="panel" style="color:var(--mute)">Only the manager device can invite other logins or change board settings.</div>'}<div class="panel"${isManager() ? '' : ' hidden'}><b>Invite code</b><div class="code">${esc(p.invite_code)}</div><span style="color:var(--mute);font-size:14px">Anyone on your login already sees this board. To bring in someone with their own login, give them this code.</span><div class="row"><button data-x="copycode">Copy code</button></div></div>
-      <div class="panel"><b>Members (${members.length})</b>${members.map(m => `<div class="row" style="justify-content:space-between"><span>${esc(nm(m.user_id))}${m.user_id === me ? ' (you)' : ''} ${m.role === 'admin' ? '· <b>admin</b>' : ''}</span>${adm && m.user_id !== me ? `<span class="row"><button data-role="${m.user_id}" style="min-height:32px;padding:2px 10px;font-size:13px">${m.role === 'admin' ? 'Make member' : 'Make admin'}</button><button class="bad" data-kick="${m.user_id}" style="min-height:32px;padding:2px 10px;font-size:13px">Remove</button></span>` : ''}</div>`).join('')}</div>
-      <div class="panel">${adm ? `<b>Project settings</b><div class="row"><input type="text" id="bd-rn" value="${esc(p.name)}" maxlength="60" style="flex:1 1 200px"><button data-x="rename">Rename</button></div><button class="bad" data-x="delproj">Delete project</button>` : ''}${isManager() ? '<button class="bad" data-x="leave">Leave project</button>' : ''}</div>`;
+    const p = P(), can = isManager() || (p.created_by_device || '').toLowerCase() === dev().toLowerCase();
+    const allDev = devices();
+    eExcl = new Set(p.allowed ? others().filter(n => !p.allowed.some(a => a.toLowerCase() === n.toLowerCase())) : []);
+    return `<div class="panel"><b>Who can see this project</b><div>${p.allowed ? '🔒 ' + esc(p.allowed.join(', ')) : '🌐 All devices on this login'}</div>
+      ${p.created_by_device ? `<span style="color:var(--mute);font-size:14px">Started by ${esc(p.created_by_device)}</span>` : ''}
+      ${can ? `<div class="tagbar" id="bd-ech">${projChips(eExcl, 'data-ed')}</div><div class="row"><button class="go" data-x="saveacc">Save who can see it</button></div>` : '<span style="color:var(--mute);font-size:14px">Only the device that started this project, or the manager, can change this.</span>'}</div>
+      ${can ? `<div class="panel"><b>Project settings</b><div class="row"><input type="text" id="bd-rn" value="${esc(p.name)}" maxlength="60" style="flex:1 1 200px"><button data-x="rename">Rename</button></div><button class="bad" data-x="delproj">Delete project</button></div>` : ''}`;
   }
 
   /* ---------- actions ---------- */
@@ -274,6 +281,8 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   root.addEventListener('click', async e => {
     const t = e.target.closest('button,[data-open],[data-file],a'); if (!t || busy) return;
     const d = t.dataset;
+    if (d.pd) { pExcl.has(d.pd) ? pExcl.delete(d.pd) : pExcl.add(d.pd); const c = root.querySelector('#bd-pch'); if (c) c.innerHTML = projChips(pExcl, 'data-pd'); return; }
+    if (d.ed) { eExcl.has(d.ed) ? eExcl.delete(d.ed) : eExcl.add(d.ed); const c = root.querySelector('#bd-ech'); if (c) c.innerHTML = projChips(eExcl, 'data-ed'); return; }
     if (d.aud) { excl.has(d.aud) ? excl.delete(d.aud) : excl.add(d.aud); if (!recipFromExcl() && excl.size) {} const ob = root.querySelector('.aud'); if (ob) ob.outerHTML = audBar(); return; }
     if (d.tag) { const bar = t.closest('.tagbar'), ta = root.querySelector('#' + bar.dataset.for); if (!ta) return;
       const h = handle(d.tag);
@@ -296,17 +305,19 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   });
   async function act(x, b) {
     const p = openId && posts.find(q => q.id === openId);
-    if (x === 'new' || x === 'join') {
+    if (x === 'new') { pExcl = new Set(); const f = root.querySelector('#bd-form'); f.innerHTML = newProjForm(); f.querySelector('input').focus(); }
+    else if (x === 'join') {
       const f = root.querySelector('#bd-form');
       f.innerHTML = `<div class="panel"><b>${x === 'new' ? 'Start a project' : 'Join a project'}</b><div class="row"><input type="text" id="bd-nx" placeholder="${x === 'new' ? 'Project name' : 'Invite code, e.g. 7F3A9C'}" maxlength="60" style="flex:1 1 200px"><button class="go" data-x="${x}-go">${x === 'new' ? 'Create' : 'Join'}</button></div></div>`;
       f.querySelector('input').focus();
     } else if (x === 'new-go' || x === 'join-go') {
       const v = root.querySelector('#bd-nx').value.trim(); if (!v) return;
       busy = true;
-      const {data, error} = x === 'new-go' ? await sb.rpc('hub_create_project', {p_name: v, p_token: token()}) : await sb.rpc('hub_join_project', {p_code: v, p_token: token()});
+      const pl = others().filter(n => !pExcl.has(n)); const devs = pExcl.size ? pl : null;
+      const {data, error} = x === 'new-go' ? await sb.rpc('hub_create_project', {p_name: v, p_token: token(), p_devices: devs}) : await sb.rpc('hub_join_project', {p_code: v, p_token: token()});
       busy = false; if (error) return toast(error.message);
       cur = data.id; try { localStorage.setItem('bd-cur-' + me, cur) } catch (_) {}
-      tab = x === 'new-go' ? 'members' : 'board'; root.querySelector('#bd-form').innerHTML = ''; await refresh(); toast(x === 'new-go' ? 'Project created. Share the invite code.' : 'Joined ' + data.name);
+      tab = 'board'; root.querySelector('#bd-form').innerHTML = ''; await refresh(); toast(x === 'new-go' ? 'Project created' : 'Joined ' + data.name);
     } else if (x === 'post') {
       const title = root.querySelector('#bd-t').value.trim(), body = root.querySelector('#bd-b').value.trim();
       if (!title) return toast('Give the post a title.');
@@ -329,9 +340,10 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
       if (x === 'delpost') { if (p.file_path) await sb.storage.from('boards').remove([p.file_path]); openId = null; }
       await loadProject(); render(); }
     else if (x === 'copycode') { try { await navigator.clipboard.writeText(P().invite_code); toast('Code copied') } catch (_) { toast('Code: ' + P().invite_code) } }
-    else if (x === 'rename') { const v = root.querySelector('#bd-rn').value.trim(); if (v) { await sb.from('hub_projects').update({name: v}).eq('id', cur); await refresh(); toast('Renamed'); } }
+    else if (x === 'rename') { const v = root.querySelector('#bd-rn').value.trim(); if (v) { const {error} = await sb.rpc('hub_project_admin', {p_token: token(), p_project: cur, p_action: 'rename', p_name: v}); if (error) throw error; await refresh(); toast('Renamed'); } }
+    else if (x === 'saveacc') { const L = others(); const devs = eExcl.size ? L.filter(n => !eExcl.has(n)) : null; const {error} = await sb.rpc('hub_set_project_devices', {p_token: token(), p_project: cur, p_devices: devs}); if (error) throw error; await refresh(); toast('Saved'); }
     else if (x === 'leave') { if (!confirm2(b, 'Tap again to leave')) return; await sb.from('hub_members').delete().eq('project_id', cur).eq('user_id', me); cur = null; tab = 'board'; await refresh(); }
-    else if (x === 'delproj') { if (!confirm2(b, 'Tap again — deletes everything')) return; await sb.from('hub_projects').delete().eq('id', cur); cur = null; tab = 'board'; await refresh(); }
+    else if (x === 'delproj') { if (!confirm2(b, 'Tap again — deletes everything')) return; const {error} = await sb.rpc('hub_project_admin', {p_token: token(), p_project: cur, p_action: 'delete'}); if (error) throw error; cur = null; tab = 'board'; await refresh(); }
   }
 
   function syncTags() { root.querySelectorAll('.tagbar').forEach(bar => { const v = root.querySelector('#' + bar.dataset.for)?.value || ''; bar.querySelectorAll('.tg').forEach(b => b.setAttribute('aria-pressed', hasTag(v, b.dataset.tag))); }); }
