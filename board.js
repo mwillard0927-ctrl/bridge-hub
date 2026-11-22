@@ -57,7 +57,7 @@ const CSS = `
 .bd .tagged{font-size:13px;color:var(--ink)}
 `;
 
-export function mountBoard({sb, user, displayName, root, device = () => '', devices = () => [], onUnread = () => {}, toast = () => {}}) {
+export function mountBoard({sb, user, displayName, root, device = () => '', devices = () => [], token = () => '', isManager = () => false, onUnread = () => {}, toast = () => {}}) {
   if (!document.getElementById('bd-css')) { const st = document.createElement('style'); st.id = 'bd-css'; st.textContent = CSS; document.head.append(st); }
   root.classList.add('bd');
   const me = user.id, myName = (displayName || 'user').toLowerCase();
@@ -126,14 +126,15 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   }
   async function postTo(pid, {title, body, tag = 'Note', due = null, file = null}) {
     const extra = file ? await upload(pid, file) : {};
-    const {error} = await sb.from('hub_posts').insert({project_id: pid, device: dev() || null, title: title.slice(0, 140), body, tag, due: due || null, ...extra});
+    const {error} = await sb.rpc('hub_post', {p_token: token(), p_project: pid, p_title: title.slice(0, 140), p_body: body, p_tag: tag, p_due: due || null,
+      p_file_path: extra.file_path || null, p_file_name: extra.file_name || null, p_file_size: extra.file_size || null, p_file_type: extra.file_type || null});
     if (error) throw error;
     soon();
   }
   async function markViewed(p) {
     if (mineHere(p) || seenHere(p)) return;
     views.push({post_id: p.id, user_id: me, device: dev(), project_id: p.project_id, viewed_at: new Date().toISOString()});
-    await sb.from('hub_views').upsert({post_id: p.id, project_id: p.project_id, device: dev()}, {onConflict: 'post_id,user_id,device', ignoreDuplicates: true});
+    await sb.rpc('hub_view', {p_token: token(), p_post: p.id});
     loadUnread();
   }
 
@@ -201,12 +202,12 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     const kids = replies.filter(r => r.post_id === postId && (r.parent_id || null) === parent);
     if (!kids.length) return '';
     return kids.map(r => `<div class="rep"><div class="who"><b>${esc(who(r))}</b> · ${ago(r.created_at)}</div><div class="pb">${hl(r.body)}</div>${fileBlock(r)}
-      <div class="acts"><button data-rto="${r.id}">Reply</button>${r.user_id === me || isAdmin() ? `<button class="bad" data-rdel="${r.id}">Delete</button>` : ''}</div>
+      <div class="acts"><button data-rto="${r.id}">Reply</button>${isManager() ? `<button class="bad" data-rdel="${r.id}">Delete</button>` : ''}</div>
       ${(() => { const k = tree(postId, r.id, depth + 1); return k ? `<div class="kids"${depth >= 3 ? ' style="margin-left:0"' : ''}>${k}</div>` : '' })()}</div>`).join('');
   }
   function detail() {
     const p = posts.find(x => x.id === openId); if (!p) { openId = null; return board(); }
-    const can = p.user_id === me || isAdmin();
+    const can = isManager();
     const seen = viewedBy(p.id), others = audience(p);
     const rt = replyTo ? replies.find(r => r.id === replyTo) : null;
     return `<div class="det"><div class="row"><button data-x="back">← Back to board</button></div>
@@ -257,7 +258,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
       else if (d.file) { e.preventDefault(); toast('Opening…'); window.open(await fileUrl(d.file), '_blank'); }
       else if (d.open) { e.preventDefault(); openId = d.open; replyTo = null; tab = 'board'; const p = posts.find(x => x.id === openId); if (p) markViewed(p); render(); window.scrollTo({top: root.offsetTop - 10}); }
       else if (d.rto) { replyTo = d.rto; render(); root.querySelector('#bd-r')?.focus(); }
-      else if (d.rdel) { if (!confirm2(t)) return; await sb.from('hub_replies').delete().eq('id', d.rdel); replies = replies.filter(r => r.id !== d.rdel && r.parent_id !== d.rdel); render(); }
+      else if (d.rdel) { if (!confirm2(t)) return; { const {error} = await sb.rpc('hub_mod', {p_token: token(), p_kind: 'reply', p_id: d.rdel, p_action: 'delete'}); if (error) throw error; } replies = replies.filter(r => r.id !== d.rdel && r.parent_id !== d.rdel); render(); }
       else if (d.kick) { if (!confirm2(t)) return; await sb.from('hub_members').delete().eq('project_id', cur).eq('user_id', d.kick); await loadProject(); render(); }
       else if (d.role) { const m = members.find(x => x.user_id === d.role); await sb.from('hub_members').update({role: m.role === 'admin' ? 'member' : 'admin'}).eq('project_id', cur).eq('user_id', d.role); await loadProject(); render(); }
       else if (d.x) await act(d.x, t);
@@ -288,12 +289,15 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     else if (x === 'reply') {
       const body = root.querySelector('#bd-r').value.trim(), f = root.querySelector('#bd-rf').files[0]; if (!body) return toast('Write something first.');
       busy = true; b.disabled = true; b.textContent = 'Sending…';
-      try { const extra = f ? await upload(cur, f) : {}; const {error} = await sb.from('hub_replies').insert({post_id: p.id, project_id: cur, device: dev() || null, parent_id: replyTo, body, ...extra}); if (error) throw error; root.querySelector('#bd-r').value = ''; replyTo = null; await loadProject(); render(); }
+      try { const extra = f ? await upload(cur, f) : {}; const {error} = await sb.rpc('hub_reply', {p_token: token(), p_post: p.id, p_parent: replyTo, p_body: body, p_file_path: extra.file_path || null, p_file_name: extra.file_name || null, p_file_size: extra.file_size || null, p_file_type: extra.file_type || null}); if (error) throw error; root.querySelector('#bd-r').value = ''; replyTo = null; await loadProject(); render(); }
       catch (err) { b.disabled = false; b.textContent = 'Send reply'; throw err; }
       finally { busy = false; }
-    } else if (x === 'status') { await sb.from('hub_posts').update({status: p.status === 'open' ? 'resolved' : 'open', updated_at: new Date().toISOString()}).eq('id', p.id); await loadProject(); render(); }
-    else if (x === 'pin') { await sb.from('hub_posts').update({pinned: !p.pinned}).eq('id', p.id); await loadProject(); render(); }
-    else if (x === 'delpost') { if (!confirm2(b)) return; if (p.file_path) await sb.storage.from('boards').remove([p.file_path]); await sb.from('hub_posts').delete().eq('id', p.id); openId = null; await loadProject(); render(); }
+    } else if (x === 'status' || x === 'pin' || x === 'delpost') {
+      const action = x === 'status' ? (p.status === 'open' ? 'resolve' : 'reopen') : x === 'pin' ? (p.pinned ? 'unpin' : 'pin') : 'delete';
+      if (x === 'delpost' && !confirm2(b)) return;
+      const {error} = await sb.rpc('hub_mod', {p_token: token(), p_kind: 'post', p_id: p.id, p_action: action}); if (error) throw error;
+      if (x === 'delpost') { if (p.file_path) await sb.storage.from('boards').remove([p.file_path]); openId = null; }
+      await loadProject(); render(); }
     else if (x === 'copycode') { try { await navigator.clipboard.writeText(P().invite_code); toast('Code copied') } catch (_) { toast('Code: ' + P().invite_code) } }
     else if (x === 'rename') { const v = root.querySelector('#bd-rn').value.trim(); if (v) { await sb.from('hub_projects').update({name: v}).eq('id', cur); await refresh(); toast('Renamed'); } }
     else if (x === 'leave') { if (!confirm2(b, 'Tap again to leave')) return; await sb.from('hub_members').delete().eq('project_id', cur).eq('user_id', me); cur = null; tab = 'board'; await refresh(); }
