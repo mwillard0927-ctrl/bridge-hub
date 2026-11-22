@@ -72,6 +72,8 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 .pill{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--line);color:var(--ink);margin-left:6px}
 .pill.m{background:#facc15;color:#111}
 .code{font:800 28px ui-monospace,monospace;letter-spacing:.18em}
+.au2{min-height:32px;padding:2px 10px;font:700 13px var(--body);border-radius:999px;border:1.5px dashed var(--line);background:var(--bg);color:var(--ink)}
+.au2[aria-pressed=true]{background:#0f7a4a;border:1.5px solid #0f7a4a;color:#fff}
 .tabs2{display:flex;gap:8px}.tabs2 button{flex:1;border-radius:999px;font:800 18px var(--disp)}
 .tabs2 button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .bdn{display:inline-block;min-width:22px;padding:0 6px;border-radius:999px;background:#e11d48;color:#fff;font:700 13px/22px var(--body);text-align:center}
@@ -109,6 +111,7 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 <label class="file">Add files<input type="file" id="file" multiple></label>
 <span class="count" id="cnt"></span>
 </div>
+<div class="row" id="aud" style="font-size:13px;color:var(--mute)"></div>
 <p class="note" id="st"></p>
 </section>
 <div class="shelfh"><h2>On your shelf</h2><div class="filt" id="filt"></div></div>
@@ -170,7 +173,9 @@ async function loadDevices(){
 function renderDevices(){
   const locked=!!cur;$('lock').hidden=locked;$('main').hidden=!locked;$('devbar').hidden=!locked;$('manage').hidden=!isMgr;if(!isMgr)$('mgr').hidden=true;
   if(!locked){renderLock();return}
-  $('devs').innerHTML=`<span class="dev" style="--c:${color(cur)};background:var(--c);border-color:var(--c);color:#fff">🔒 ${esc(cur)}</span>${isMgr?'<span class="pill m">Manager</span>':''}`;
+  $('devs').innerHTML=`<span class="dev" style="--c:${color(cur)};background:var(--c);border-color:var(--c);color:#fff">🔒 ${esc(cur)}</span>${isMgr?'<span class="pill m">Manager</span>':''}${!devices.some(d=>d.is_manager)?'<button class="dev add" id="becomeMgr">Become manager</button>':''}`;
+  const bm=$('becomeMgr');if(bm)bm.onclick=async()=>{if(bm.dataset.sure!=='1'){bm.dataset.sure='1';bm.textContent='Tap again to confirm';return}const {error}=await sb.rpc('hub_become_manager',{p_token:tok});if(error)return toast(error.message);await loadDevices();if(board)board.refresh();toast('You are now the manager')};
+  if($('dest').options.length)renderAud();
   $('mlist').innerHTML=devices.map(d=>`<div class="row" style="justify-content:space-between"><span><span class="dot" style="--c:${color(d.name)}"></span>${esc(d.name)}${d.is_manager?'<span class="pill m">Manager</span>':d.claimed_at?'<span class="pill">🔒 Locked</span>':'<span class="pill">Open</span>'}</span>${d.name!==cur?`<span class="row">${d.claimed_at?`<button data-act="unlock" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Unlock</button>`:''}${d.claimed_at?`<button data-act="make_manager" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Make manager</button>`:''}<button data-act="remove" data-id="${d.id}" style="color:var(--bad);min-height:34px;padding:2px 10px;font-size:13px">Remove</button></span>`:''}</div>`).join('');
   $('filt').innerHTML=`<button data-f="all" aria-pressed="${filt==='all'}">All</button>`+devices.map(d=>`<button data-f="${esc(d.name)}" aria-pressed="${filt===d.name}">From ${esc(d.name)}</button>`).join('');
   upd();
@@ -187,7 +192,8 @@ function renderLock(){
     ${taken.length?`<button data-l="rec" style="justify-self:start;min-height:36px;font-size:14px">Already locked this name before? Recover it</button>`:''}`;
   else if(lk.step===2)L.innerHTML=`<b>Step 1 of 3</b><div class="lockname">${n}</div><p style="margin:0">This device will be locked in as <b>${n}</b>. Every post, reply and drop from here will show as ${n}. You won't be able to switch names from this device. Only the manager can change it.</p><div class="row"><button data-l="back1">Back</button><button class="go" data-l="to3">Yes, continue</button></div>`;
   else if(lk.step===3)L.innerHTML=`<b>Step 2 of 3</b><p style="margin:0">Type <b>${n}</b> exactly to confirm.</p><input type="text" id="lType" autocomplete="off" spellcheck="false"><div class="row"><button data-l="back1">Back</button><button class="go" data-l="to4">Confirm</button></div><p class="note" id="lst"></p>`;
-  else if(lk.step===4)L.innerHTML=`<b>Step 3 of 3: final check</b><div class="lockname">🔒 ${n}</div><p style="margin:0">Lock this device in as <b>${n}</b> for good?</p><div class="row"><button data-l="back1">Cancel</button><button class="go" data-l="claim">Lock it in</button></div><p class="note" id="lst"></p>`;
+  else if(lk.step===35)L.innerHTML=`<b>This board doesn't have a manager yet</b><p style="margin:0">Will <b>${n}</b> be the manager (admin) of this board? The manager is the only device that can delete, pin or resolve posts, and remove, unlock or hand off devices.</p><div class="row"><button data-l="mgrNo">No, just a member</button><button class="go" data-l="mgrYes">Yes, I'm the manager</button></div>`;
+  else if(lk.step===4)L.innerHTML=`<b>Step 3 of 3: final check</b><div class="lockname">🔒 ${n}</div><p style="margin:0">Lock this device in as <b>${n}</b>${lk.wantMgr?' as the <b>manager</b>':''} for good?</p><div class="row"><button data-l="back1">Cancel</button><button class="go" data-l="claim">Lock it in</button></div><p class="note" id="lst"></p>`;
   else if(lk.step===5)L.innerHTML=`<b>Locked in as ${n}${lk.mgr?' (Manager)':''}</b><p style="margin:0">Save this recovery code somewhere safe. You'll need it to use <b>${n}</b> on a new phone or browser, or if this browser's data gets cleared.</p><div class="code">${esc(lk.code)}</div><div class="row"><button data-l="copy">Copy code</button><button class="go" data-l="done">I saved it, continue</button></div>`;
 }
 $('lock').onclick=async e=>{
@@ -197,9 +203,10 @@ $('lock').onclick=async e=>{
   if(l==='back1'){lk={step:1,name:'',rec:false};return renderLock()}
   if(l==='rec'){lk={step:1,name:'',rec:true};return renderLock()}
   if(l==='to3'){lk.step=3;renderLock();$('lType').focus();return}
-  if(l==='to4'){if($('lType').value.trim().toLowerCase()!==lk.name.toLowerCase())return note('lst','That doesn\'t match. Type '+lk.name+' exactly.',true);lk.step=4;return renderLock()}
+  if(l==='to4'){if($('lType').value.trim().toLowerCase()!==lk.name.toLowerCase())return note('lst','That doesn\'t match. Type '+lk.name+' exactly.',true);lk.step=devices.some(d=>d.is_manager)?4:35;lk.wantMgr=false;return renderLock()}
+  if(l==='mgrYes'||l==='mgrNo'){lk.wantMgr=l==='mgrYes';lk.step=4;return renderLock()}
   if(l==='claim'){b.disabled=true;const token=rnd(32),code=rnd(8);
-    const {data,error}=await sb.rpc('hub_claim_device',{p_name:lk.name,p_token:token,p_recovery:code});
+    const {data,error}=await sb.rpc('hub_claim_device',{p_name:lk.name,p_token:token,p_recovery:code,p_manager:!!lk.wantMgr});
     if(error){b.disabled=false;return note('lst',error.message,true)}
     LS(LKEY(),JSON.stringify({name:data.name,token}));lk={step:5,name:data.name,code,mgr:data.is_manager};return renderLock()}
   if(l==='copy'){try{await navigator.clipboard.writeText(lk.code);toast('Copied')}catch(_){toast('Write it down: '+lk.code)}return}
@@ -262,7 +269,7 @@ $('list').onclick=async e=>{
 $('send').onclick=async()=>{
   const text=$('text').value,title=$('title').value.trim();if(!text||!cur)return;
   $('send').disabled=true;note('st','Sending…');
-  if($('dest').value){try{await board.postTo($('dest').value,{title:title||text.split('\n')[0].slice(0,140),body:text});$('text').value='';$('title').value='';note('st','Posted to the board.');toast('Posted')}catch(e){note('st','Not posted: '+e.message,true)}upd();return}
+  if($('dest').value){try{await board.postTo($('dest').value,{title:title||text.split('\n')[0].slice(0,140),body:text,recipients:shelfRecip()});shelfExcl=new Set();renderAud();$('text').value='';$('title').value='';note('st',shelfRecip()===null?'Posted to the board.':'Sent privately.');toast('Posted')}catch(e){note('st','Not posted: '+e.message,true)}upd();return}
   const {error}=await sb.from('hub_drops').insert({kind:'text',from_device:cur,title,text});
   if(error)note('st','Not sent: '+error.message,true);else{$('text').value='';$('title').value='';note('st','Sent to your shelf.');toast('Sent')}
   upd();
@@ -270,7 +277,7 @@ $('send').onclick=async()=>{
 async function sendFiles(fs){
   if(!cur){note('st','Lock in this device first.',true);return}
   const title=$('title').value.trim();let n=0;
-  if($('dest').value){for(const f of fs){note('st','Uploading '+f.name+'…');try{await board.postTo($('dest').value,{title:title||f.name,body:'',file:f});n++}catch(e){note('st','Could not post '+f.name+': '+e.message,true)}}if(n){$('title').value='';note('st',n+' file post'+(n>1?'s':'')+' added to the board.');toast('Posted')}return}
+  if($('dest').value){for(const f of fs){note('st','Uploading '+f.name+'…');try{await board.postTo($('dest').value,{title:title||f.name,body:'',file:f,recipients:shelfRecip()});n++}catch(e){note('st','Could not post '+f.name+': '+e.message,true)}}if(n){$('title').value='';note('st',n+' file post'+(n>1?'s':'')+' added to the board.');toast('Posted')}return}
   for(const f of fs){if(f.size>MAXF){note('st',f.name+' is over 10 MB.',true);continue}
     note('st','Uploading '+f.name+'…');
     const path=user.id+'/'+Date.now().toString(36)+'-'+(f.name||'file').replace(/[^\w.-]+/g,'-');
@@ -289,7 +296,15 @@ box.addEventListener('drop',e=>{e.preventDefault();box.classList.remove('drag');
 let board=null;
 function showTab(b){$('tabShelf').setAttribute('aria-pressed',!b);$('tabBoard').setAttribute('aria-pressed',b);$('vShelf').hidden=b;$('vBoard').hidden=!b;if(b&&board)board.refresh()}
 $('tabShelf').onclick=()=>showTab(false);$('tabBoard').onclick=()=>showTab(true);
-function syncDest(){const d=$('dest'),v=d.value;d.innerHTML='<option value="">→ Shelf</option>'+(board?board.projects():[]).map(p=>`<option value="${p.id}">→ Board: ${esc(p.name)}</option>`).join('');d.value=[...d.options].some(o=>o.value===v)?v:''}
+let shelfExcl=new Set(),destTouched=false;
+function syncDest(){const d=$('dest'),v=d.value;const ps=board?board.projects():[];d.innerHTML=ps.map(p=>`<option value="${p.id}">→ Board: ${esc(p.name)}</option>`).join('')+'<option value="">→ Shelf only</option>';
+  d.value=destTouched&&[...d.options].some(o=>o.value===v)?v:(ps[0]?.id||'');renderAud()}
+function shelfRecip(){const L=devices.map(x=>x.name).filter(n=>n!==cur);return L.every(n=>!shelfExcl.has(n))?null:L.filter(n=>!shelfExcl.has(n))}
+function renderAud(){const A=$('aud');if(!$('dest').value){A.innerHTML='<span>Shelf drops are visible to every device on this login.</span>';return}
+  const L=devices.map(x=>x.name).filter(n=>n!==cur);if(!L.length){A.innerHTML='';return}
+  A.innerHTML='<span>Who sees it:</span>'+L.map(n=>`<button type="button" class="au2" data-au="${esc(n)}" aria-pressed="${!shelfExcl.has(n)}">${esc(n)}</button>`).join('')+`<b style="color:var(--ink)">${shelfRecip()?'🔒 Private':'🌐 Whole board'}</b>`}
+$('aud').onclick=e=>{const b=e.target.closest('[data-au]');if(!b)return;const n=b.dataset.au;shelfExcl.has(n)?shelfExcl.delete(n):shelfExcl.add(n);renderAud()};
+$('dest').onchange=()=>{destTouched=true;renderAud()};
 $('dest').onfocus=syncDest;
 
 /* ---------- session ---------- */

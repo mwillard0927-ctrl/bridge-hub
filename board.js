@@ -55,13 +55,15 @@ const CSS = `
 .bd .tg{min-height:32px;padding:2px 10px;font:700 13px var(--body,system-ui);border-radius:999px;border:1.5px dashed var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
 .bd .tg[aria-pressed=true]{background:#facc15;border:1.5px solid #facc15;color:#111}
 .bd .tagged{font-size:13px;color:var(--ink)}
+.bd .tg.au[aria-pressed=true]{background:#0f7a4a;border:1.5px solid #0f7a4a;color:#fff}
+.bd .priv{font-weight:700;font-size:12px;padding:2px 8px;border-radius:999px;background:#334155;color:#fff}
 `;
 
 export function mountBoard({sb, user, displayName, root, device = () => '', devices = () => [], token = () => '', isManager = () => false, onUnread = () => {}, toast = () => {}}) {
   if (!document.getElementById('bd-css')) { const st = document.createElement('style'); st.id = 'bd-css'; st.textContent = CSS; document.head.append(st); }
   root.classList.add('bd');
   const me = user.id, myName = (displayName || 'user').toLowerCase();
-  let autoMade = false, projects = [], cur = null, members = [], names = {}, posts = [], replies = [], views = [], tab = 'board', filt = 'all', openId = null, replyTo = null, unread = {}, chan = null, urls = {}, busy = false, tmr = null;
+  let excl = new Set(), autoMade = false, projects = [], cur = null, members = [], names = {}, posts = [], replies = [], views = [], tab = 'board', filt = 'all', openId = null, replyTo = null, unread = {}, chan = null, urls = {}, busy = false, tmr = null;
   try { cur = localStorage.getItem('bd-cur-' + me) } catch (_) {}
 
   const nm = id => names[id] || 'someone';
@@ -70,7 +72,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   const label = k => k.startsWith('d:') ? (k.slice(2) || 'this account') : nm(k.slice(2));
   const who = o => o.user_id === me ? (o.device || displayName) : nm(o.user_id) + (o.device ? ' · ' + o.device : '');
   const viewedBy = pid => [...new Set(views.filter(v => v.post_id === pid).map(v => keyOf(v.user_id, v.device)))];
-  const audience = p => { const pk = keyOf(p.user_id, p.device); return [...new Set([...devices().map(d => 'd:' + d), ...members.filter(m => m.user_id !== me).map(m => 'u:' + m.user_id)])].filter(k => k !== pk); };
+  const audience = p => { const pk = keyOf(p.user_id, p.device); return [...new Set([...(p.recipients || devices()).map(d => 'd:' + d), ...members.filter(m => m.user_id !== me).map(m => 'u:' + m.user_id)])].filter(k => k !== pk); };
   const mineHere = p => p.user_id === me && (p.device || '') === dev();
   const seenHere = p => views.some(v => v.post_id === p.id && v.user_id === me && (v.device || '') === dev());
   const handle = n => '@' + n.trim().replace(/\s+/g, '_');
@@ -79,6 +81,10 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   const tagsIn = t => people().filter(n => hasTag(t, n));
   const tagBar = target => { const L = people(); if (!L.length) return ''; const cur = root.querySelector('#' + target)?.value || '';
     return `<div class="tagbar" data-for="${target}"><span>Tag:</span>${L.map(n => `<button type="button" class="tg" data-tag="${esc(n)}" aria-pressed="${hasTag(cur, n)}">${esc(handle(n))}</button>`).join('')}</div>`; };
+  const others = () => devices().filter(n => n && n !== dev());
+  const audBar = () => { const L = others(); if (!L.length) return ''; const allOn = L.every(n => !excl.has(n));
+    return `<div class="tagbar aud"><span>Who sees it:</span>${L.map(n => `<button type="button" class="tg au" data-aud="${esc(n)}" aria-pressed="${!excl.has(n)}">${esc(n)}</button>`).join('')}<b style="font-size:13px;color:var(--ink)">${allOn ? '🌐 Whole board' : '🔒 Private'}</b></div>`; };
+  const recipFromExcl = () => { const L = others(); return L.every(n => !excl.has(n)) ? null : L.filter(n => !excl.has(n)); };
   const isUnread = p => !mineHere(p) && !seenHere(p) && p.status === 'open';
   const isAdmin = () => members.some(m => m.user_id === me && m.role === 'admin');
   const reEsc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '_?');
@@ -98,8 +104,10 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     const [{data: ps}, {data: vs}] = await Promise.all([
       sb.from('hub_posts').select('id,project_id,user_id,device,status').eq('status', 'open').limit(2000),
       sb.from('hub_views').select('post_id,device').eq('user_id', me).limit(5000)]);
+    let all = ps || [];
+    if (token()) for (const pr of projects) { const {data} = await sb.rpc('hub_private_posts', {p_token: token(), p_project: pr.id}); all = all.concat((data || []).filter(x => x.status === 'open')); }
     const seen = new Set((vs || []).filter(v => (v.device || '') === dev()).map(v => v.post_id)); unread = {};
-    (ps || []).forEach(p => { if (!mineHere(p) && !seen.has(p.id)) unread[p.project_id] = (unread[p.project_id] || 0) + 1; });
+    all.forEach(p => { if (!mineHere(p) && !seen.has(p.id)) unread[p.project_id] = (unread[p.project_id] || 0) + 1; });
     onUnread(Object.values(unread).reduce((a, b) => a + b, 0));
   }
   async function loadProject() {
@@ -110,6 +118,8 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
       sb.from('hub_replies').select('*').eq('project_id', cur).order('created_at').limit(3000),
       sb.from('hub_views').select('*').eq('project_id', cur).limit(10000)]);
     members = m.data || []; posts = p.data || []; replies = r.data || []; views = v.data || [];
+    if (token()) { const [pp, pr] = await Promise.all([sb.rpc('hub_private_posts', {p_token: token(), p_project: cur}), sb.rpc('hub_private_replies', {p_token: token(), p_project: cur})]);
+      posts = [...posts, ...(pp.data || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); replies = [...replies, ...(pr.data || [])].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)); }
     const ids = [...new Set([...members.map(x => x.user_id), ...posts.map(x => x.user_id), ...replies.map(x => x.user_id)])];
     if (ids.length) { const {data} = await sb.from('hub_profiles').select('user_id,username').in('user_id', ids); (data || []).forEach(x => names[x.user_id] = x.username); }
   }
@@ -124,10 +134,10 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     if (error) throw error;
     return {file_path: path, file_name: f.name || 'file', file_size: f.size, file_type: f.type || ''};
   }
-  async function postTo(pid, {title, body, tag = 'Note', due = null, file = null}) {
+  async function postTo(pid, {title, body, tag = 'Note', due = null, file = null, recipients = null}) {
     const extra = file ? await upload(pid, file) : {};
     const {error} = await sb.rpc('hub_post', {p_token: token(), p_project: pid, p_title: title.slice(0, 140), p_body: body, p_tag: tag, p_due: due || null,
-      p_file_path: extra.file_path || null, p_file_name: extra.file_name || null, p_file_size: extra.file_size || null, p_file_type: extra.file_type || null});
+      p_file_path: extra.file_path || null, p_file_name: extra.file_name || null, p_file_size: extra.file_size || null, p_file_type: extra.file_type || null, p_recipients: recipients && recipients.length ? recipients : null});
     if (error) throw error;
     soon();
   }
@@ -168,7 +178,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     const late = p.due && p.status === 'open' && new Date(p.due + 'T23:59') < new Date();
     const ment = mentionsMe(p.body) || mentionsMe(p.title);
     return `<article class="post${isNew ? ' unread' : ''}${ment ? ' ment' : ''}${p.status === 'resolved' ? ' res' : ''}" style="--tc:${TAGC[p.tag] || '#64748b'}" data-open="${p.id}">
-      <div class="ph"><span class="tag">${esc(p.tag || 'Note')}</span>${isNew ? '<span class="new">NEW</span>' : ''}${p.pinned ? '📌' : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(who(p))} · ${ago(p.created_at)}</span></div>
+      <div class="ph"><span class="tag">${esc(p.tag || 'Note')}</span>${isNew ? '<span class="new">NEW</span>' : ''}${p.pinned ? '📌' : ''}${p.recipients ? `<span class="priv">🔒 ${esc(p.recipients.join(', '))}</span>` : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(who(p))} · ${ago(p.created_at)}</span></div>
       <div class="pt">${hl(p.title)}</div>
       ${p.body ? `<div class="pb">${hl(p.body.length > 180 ? p.body.slice(0, 180) + '…' : p.body)}</div>` : ''}
       <div class="pf"><span>💬 ${rc}</span><span>👁 ${seenN.length ? 'Seen by ' + esc(seenN.map(label).join(', ')) : 'Not seen yet'}${waiting > 0 ? ' · waiting on ' + waiting : ''}</span>${p.due ? `<span class="${late ? 'late' : ''}">📅 ${late ? 'Overdue · ' : 'Due '}${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}${p.file_name ? '<span>📎 ' + esc(p.file_name) + '</span>' : ''}${(() => { const t = tagsIn(p.title + ' ' + (p.body || '')); return t.length ? `<span class="tagged">🏷 ${esc(t.join(', '))}</span>` : '' })()}</div></article>`;
@@ -183,6 +193,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     const res = L.filter(p => p.status === 'resolved');
     const compose = `<details class="panel" id="bd-compose"><summary>＋ New post</summary>
       <input type="text" id="bd-t" placeholder="Title" maxlength="140">
+      ${audBar()}
       ${tagBar('bd-b')}
       <textarea id="bd-b" placeholder="Details… tap a name above to tag them"></textarea>
       <div class="row"><select id="bd-tag" style="flex:1 1 120px">${TAGS.map(t => `<option>${t}</option>`).join('')}</select>
@@ -211,7 +222,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     const seen = viewedBy(p.id), others = audience(p);
     const rt = replyTo ? replies.find(r => r.id === replyTo) : null;
     return `<div class="det"><div class="row"><button data-x="back">← Back to board</button></div>
-      <article class="post" style="--tc:${TAGC[p.tag] || '#64748b'};cursor:default"><div class="ph"><span class="tag">${esc(p.tag)}</span>${p.pinned ? '📌 Pinned' : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(who(p))} · ${ago(p.created_at)}</span>${p.due ? `<span>📅 Due ${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}</div>
+      <article class="post" style="--tc:${TAGC[p.tag] || '#64748b'};cursor:default"><div class="ph"><span class="tag">${esc(p.tag)}</span>${p.recipients ? `<span class="priv">🔒 Private: ${esc(p.recipients.join(', '))}</span>` : ''}${p.pinned ? '📌 Pinned' : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(who(p))} · ${ago(p.created_at)}</span>${p.due ? `<span>📅 Due ${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}</div>
       <div class="pt" style="font-size:21px">${hl(p.title)}</div>${p.body ? `<div class="pb">${hl(p.body)}</div>` : ''}${fileBlock(p)}
       <div class="row">${can ? `<button data-x="status">${p.status === 'open' ? '✅ Mark resolved' : '↩ Reopen'}</button><button data-x="pin">${p.pinned ? 'Unpin' : '📌 Pin'}</button><button class="bad" data-x="delpost">Delete</button>` : ''}</div>
       <div class="pf">👁 ${others.map(k => `${seen.includes(k) ? '✓' : '○'} ${esc(label(k))}`).join(' · ') || 'No one else yet'}</div></article>
@@ -245,6 +256,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   root.addEventListener('click', async e => {
     const t = e.target.closest('button,[data-open],[data-file],a'); if (!t || busy) return;
     const d = t.dataset;
+    if (d.aud) { excl.has(d.aud) ? excl.delete(d.aud) : excl.add(d.aud); if (!recipFromExcl() && excl.size) {} const ob = root.querySelector('.aud'); if (ob) ob.outerHTML = audBar(); return; }
     if (d.tag) { const bar = t.closest('.tagbar'), ta = root.querySelector('#' + bar.dataset.for); if (!ta) return;
       const h = handle(d.tag);
       if (hasTag(ta.value, d.tag)) ta.value = ta.value.replace(new RegExp('\\s?' + reEsc(h) + '(?![\\w])', 'gi'), '').trimStart();
@@ -281,7 +293,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
       const title = root.querySelector('#bd-t').value.trim(), body = root.querySelector('#bd-b').value.trim();
       if (!title) return toast('Give the post a title.');
       busy = true; b.disabled = true; b.textContent = 'Posting…';
-      try { await postTo(cur, {title, body, tag: root.querySelector('#bd-tag').value, due: root.querySelector('#bd-due').value, file: root.querySelector('#bd-f').files[0]}); ['#bd-t', '#bd-b', '#bd-due'].forEach(q => root.querySelector(q).value = ''); root.querySelector('#bd-compose').open = false; toast('Posted'); await loadProject(); render(); }
+      try { await postTo(cur, {title, body, tag: root.querySelector('#bd-tag').value, due: root.querySelector('#bd-due').value, file: root.querySelector('#bd-f').files[0], recipients: recipFromExcl()}); excl = new Set(); ['#bd-t', '#bd-b', '#bd-due'].forEach(q => root.querySelector(q).value = ''); root.querySelector('#bd-compose').open = false; toast('Posted'); await loadProject(); render(); }
       catch (err) { b.disabled = false; b.textContent = 'Post to board'; throw err; }
       finally { busy = false; }
     } else if (x === 'back') { openId = null; replyTo = null; render(); }
@@ -318,5 +330,6 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
 
   (async () => { try { await upsertProfile(); await refresh(); live(); } catch (e) { root.innerHTML = `<div class="empty">Boards couldn't load: ${esc(e.message)}. Has the board setup SQL been run?</div>`; } })();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) soon(); });
-  return {projects: () => projects, postTo, refresh, destroy() { if (chan) sb.removeChannel(chan); root.innerHTML = ''; }};
+  const poll = setInterval(() => { if (!document.hidden && root.isConnected && !root.closest('[hidden]')) soon(); }, 20000);
+  return {projects: () => projects, current: () => cur, postTo, refresh, destroy() { clearInterval(poll); if (chan) sb.removeChannel(chan); root.innerHTML = ''; }};
 }
