@@ -68,6 +68,11 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
 .toast.show{opacity:1}
 [hidden]{display:none!important}
+.guide summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:18px;color:var(--acc)}
+.guide h3{font:800 22px var(--disp);margin:6px 0 0}
+.gsteps{margin:0;padding-left:22px;display:grid;gap:8px}
+.gfeat{margin:0;padding-left:18px;display:grid;gap:6px;font-size:15px}
+.gmgr{background:#0b1f14;color:#e9ecf1;border-radius:14px;padding:12px 14px}.gmgr h3{color:#facc15}
 .lockname{font:800 26px var(--disp)}
 .pill{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--line);color:var(--ink);margin-left:6px}
 .pill.m{background:#facc15;color:#111}
@@ -97,6 +102,16 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 <button class="go" id="aGo">Sign in</button>
 <p class="note" id="aSt"></p>
 </section>
+<details class="card guide" id="guide">
+<summary><b>New here? How Bridge Hub works</b></summary>
+<p class="note" style="margin:0">A private shelf and message board for your people: family, friends or any group. Free, and works in any phone browser.</p>
+<h3>Get started</h3>
+<ol class="gsteps"><li><b>Tap Create account.</b> Pick a username and password. No email needed, and no password reset, so save it.</li><li><b>Name this device</b> (like "Sam's phone") and confirm 3 times. The first device can choose to be the <b>Manager</b>.</li><li><b>Save your recovery code</b> and add the app to your home screen.</li><li><b>Share the username and password</b> with the people you want in, whether that's family, friends or coworkers. Everyone on that login shares one shelf and board, each under their own device name.</li><li><b>Already have a login?</b> Tap <b>Sign in</b>, then pick your name (or recover it with your code).</li></ol>
+<h3>What it does</h3>
+<ul class="gfeat"><li><b>Shelf.</b> Drop text, links or files on one device and grab them on another. Clears itself after 7 days.</li><li><b>Message board.</b> Post notes tagged Note, Idea, Question, Decision or Urgent, with an optional due date.</li><li><b>Private posts.</b> Under "Who sees it," turn off anyone to send only to the devices you pick.</li><li><b>Threads.</b> Reply to a post or to a specific reply. Posts can be marked resolved.</li><li><b>Tag people.</b> Tap a device name to call someone out; their post gets highlighted.</li><li><b>Files and photos.</b> Attach up to 10 MB per file. The Files tab lists everything shared.</li><li><b>Projects.</b> Anyone can start a separate board and choose which devices can see it.</li><li><b>NEW badges and live updates.</b> Unread posts stay marked until you open them.</li><li><b>Activity feed.</b> See the latest posts and replies at a glance.</li><li><b>Locked device names.</b> Each phone keeps one name, so you always know who posted.</li></ul>
+<div class="gmgr"><h3>If you're the Manager</h3><ul class="gfeat"><li><b>Manage devices.</b> Remove, unlock or hand off the manager role.</li><li><b>Moderate.</b> Pin, resolve or delete any post or reply.</li><li><b>Read tracking.</b> See who read each post, who was on but skipped it, and who opened files.</li><li><b>Manager mode switch.</b> Turn the tools off to see the app like everyone else.</li></ul></div>
+<p class="note" style="margin:0">Private by design: each login only sees its own shelf and boards, and no email or phone number is collected. Don't post passwords or anything highly sensitive.</p>
+</details>
 
 <div id="app" hidden style="display:grid;gap:16px">
 <section class="card" id="lock" hidden></section>
@@ -316,7 +331,7 @@ $('dest').onfocus=syncDest;
 
 /* ---------- session ---------- */
 async function enter(){
-  $('auth').hidden=true;$('app').hidden=false;$('who').hidden=false;$('uname').textContent='@'+uname(user);
+  $('auth').hidden=true;$('guide').hidden=true;$('app').hidden=false;$('who').hidden=false;$('uname').textContent='@'+uname(user);
   if(!board)board=mountBoard({sb,user,displayName:uname(user),root:$('vBoard'),toast,device:()=>cur||'',devices:()=>devices.map(d=>d.name),token:()=>tok||'',isManager:()=>isMgr&&mgrMode,onUnread:n=>{$('bdN').hidden=!n;$('bdN').textContent=n;syncDest()}});
   try{await loadDevices();await cleanup();await loadDrops()}catch(e){note('st','Could not load: '+e.message,true);return}
   if(chan)sb.removeChannel(chan);
@@ -325,7 +340,7 @@ async function enter(){
     else if(p.eventType==='DELETE')items=items.filter(i=>i.id!==p.old.id);
     render()}).subscribe();
 }
-function leave(){if(board){board.destroy();board=null}showTab(false);if(chan){sb.removeChannel(chan);chan=null}items=[];devices=[];cur=null;$('app').hidden=true;$('who').hidden=true;$('auth').hidden=false;setMode('in')}
+function leave(){try{$('guide').open=!LS('hub-seen-guide');LS('hub-seen-guide','1')}catch(_){}if(board){board.destroy();board=null}showTab(false);if(chan){sb.removeChannel(chan);chan=null}items=[];devices=[];cur=null;$('app').hidden=true;$('who').hidden=true;$('auth').hidden=false;$('guide').hidden=false;setMode('in')}
 sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;if(user&&user.id!==was)enter();if(!user&&was)leave()});
 const {data:{session}}=await sb.auth.getSession();user=session?.user||null;user?enter():leave();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)loadDrops().catch(()=>{})});
