@@ -103,7 +103,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   async function loadProjects() {
     const {data} = await sb.from('hub_projects').select('*').order('created_at');
     projects = data || [];
-    if (!projects.length && !autoMade) { autoMade = true; const {data} = await sb.rpc('hub_create_project', {p_name: displayName + "'s board"}); if (data) { projects = [data]; } }
+    if (!projects.length && !autoMade) { autoMade = true; const {data} = await sb.rpc('hub_create_project', {p_name: displayName + "'s board", p_token: token()}); if (data) { projects = [data]; } }
     if (!projects.some(p => p.id === cur)) cur = projects[0]?.id || null;
   }
   async function loadUnread() {
@@ -173,9 +173,9 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   }
   function draw() {
     const bar = `<div class="pbar">${projects.map(p => `<button class="pchip" data-p="${p.id}" aria-pressed="${p.id === cur}">${esc(p.name)}${unread[p.id] ? `<span class="n">${unread[p.id]}</span>` : ''}</button>`).join('')}
-      <button class="pchip ghost" data-x="new">+ New project</button><button class="pchip ghost" data-x="join">Join with code</button></div>
+      ${isManager() ? '<button class="pchip ghost" data-x="new">+ New project</button><button class="pchip ghost" data-x="join">Join with code</button>' : ''}</div>
       <div id="bd-form"></div>`;
-    if (!projects.length) { root.innerHTML = bar + `<div class="empty">No projects yet. Start one with <b>+ New project</b>, or tap <b>Join with code</b> if someone gave you an invite code.</div>`; return; }
+    if (!projects.length) { root.innerHTML = bar + `<div class="empty">No boards yet. The manager device can start one with <b>+ New project</b> or join one with a code.</div>`; return; }
     const subtabs = `<div class="sub">${[['board', 'Board'], ['activity', 'Activity'], ['files', 'Files'], ['members', 'Members']].map(([k, l]) => `<button data-t="${k}" aria-pressed="${tab === k}">${l}</button>`).join('')}</div>`;
     let body = '';
     if (openId) body = detail(); else if (tab === 'board') body = board(); else if (tab === 'activity') body = activity(); else if (tab === 'files') body = files(); else body = membersView();
@@ -263,10 +263,10 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     return `<div class="panel">${f.length ? f.map(x => `<div class="act" style="cursor:default"><span class="flink" data-file="${esc(x.file_path)}" data-fpost="${x.pid}">📎 ${esc(x.file_name)}</span> <span style="color:var(--mute);font-size:13px">${kb(x.file_size || 0)} · ${esc(who(x))} · ${ago(x.created_at)} · in <a href="#" data-open="${x.pid}" style="color:var(--ink)">${esc(x.from || 'post')}</a></span></div>`).join('') : '<span style="color:var(--mute)">No files shared yet.</span>'}</div>`;
   }
   function membersView() {
-    const p = P(), adm = isAdmin();
-    return `<div class="panel"><b>Invite code</b><div class="code">${esc(p.invite_code)}</div><span style="color:var(--mute);font-size:14px">Anyone on your login already sees this board. To bring in someone with their own login, give them this code.</span><div class="row"><button data-x="copycode">Copy code</button></div></div>
+    const p = P(), adm = isAdmin() && isManager();
+    return `${isManager() ? '' : '<div class="panel" style="color:var(--mute)">Only the manager device can invite other logins or change board settings.</div>'}<div class="panel"${isManager() ? '' : ' hidden'}><b>Invite code</b><div class="code">${esc(p.invite_code)}</div><span style="color:var(--mute);font-size:14px">Anyone on your login already sees this board. To bring in someone with their own login, give them this code.</span><div class="row"><button data-x="copycode">Copy code</button></div></div>
       <div class="panel"><b>Members (${members.length})</b>${members.map(m => `<div class="row" style="justify-content:space-between"><span>${esc(nm(m.user_id))}${m.user_id === me ? ' (you)' : ''} ${m.role === 'admin' ? '· <b>admin</b>' : ''}</span>${adm && m.user_id !== me ? `<span class="row"><button data-role="${m.user_id}" style="min-height:32px;padding:2px 10px;font-size:13px">${m.role === 'admin' ? 'Make member' : 'Make admin'}</button><button class="bad" data-kick="${m.user_id}" style="min-height:32px;padding:2px 10px;font-size:13px">Remove</button></span>` : ''}</div>`).join('')}</div>
-      <div class="panel">${adm ? `<b>Project settings</b><div class="row"><input type="text" id="bd-rn" value="${esc(p.name)}" maxlength="60" style="flex:1 1 200px"><button data-x="rename">Rename</button></div><button class="bad" data-x="delproj">Delete project</button>` : ''}<button class="bad" data-x="leave">Leave project</button></div>`;
+      <div class="panel">${adm ? `<b>Project settings</b><div class="row"><input type="text" id="bd-rn" value="${esc(p.name)}" maxlength="60" style="flex:1 1 200px"><button data-x="rename">Rename</button></div><button class="bad" data-x="delproj">Delete project</button>` : ''}${isManager() ? '<button class="bad" data-x="leave">Leave project</button>' : ''}</div>`;
   }
 
   /* ---------- actions ---------- */
@@ -303,7 +303,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     } else if (x === 'new-go' || x === 'join-go') {
       const v = root.querySelector('#bd-nx').value.trim(); if (!v) return;
       busy = true;
-      const {data, error} = x === 'new-go' ? await sb.rpc('hub_create_project', {p_name: v}) : await sb.rpc('hub_join_project', {p_code: v});
+      const {data, error} = x === 'new-go' ? await sb.rpc('hub_create_project', {p_name: v, p_token: token()}) : await sb.rpc('hub_join_project', {p_code: v, p_token: token()});
       busy = false; if (error) return toast(error.message);
       cur = data.id; try { localStorage.setItem('bd-cur-' + me, cur) } catch (_) {}
       tab = x === 'new-go' ? 'members' : 'board'; root.querySelector('#bd-form').innerHTML = ''; await refresh(); toast(x === 'new-go' ? 'Project created. Share the invite code.' : 'Joined ' + data.name);
