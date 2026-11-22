@@ -161,19 +161,21 @@ $('out').onclick=async()=>{await sb.auth.signOut()};
 const uname=u=>u?.user_metadata?.username||(u?.email||'').replace(DOMAIN,'');
 
 /* ---------- devices (locked) ---------- */
-let isMgr=false,tok=null,lk={step:1,name:'',rec:false};
+let mgrMode=true,isMgr=false,tok=null,lk={step:1,name:'',rec:false};
 const LKEY=()=>'hub-lock-'+user.id;
 const rnd=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join('');
 async function loadDevices(){
   const {data,error}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager').order('created_at');if(error)throw error;devices=data;
   let saved=null;try{saved=JSON.parse(LS(LKEY())||'null')}catch(_){}
   cur=null;isMgr=false;tok=null;
+  try{mgrMode=LS('hub-mgrmode-'+user.id)!=='off'}catch(_){}
   if(saved&&saved.token){const {data:me}=await sb.rpc('hub_me',{p_token:saved.token});if(me&&me.id){cur=me.name;isMgr=!!me.is_manager;tok=saved.token}else LS(LKEY(),null)}
   renderDevices()}
 function renderDevices(){
-  const locked=!!cur;$('lock').hidden=locked;$('main').hidden=!locked;$('devbar').hidden=!locked;$('manage').hidden=!isMgr;if(!isMgr)$('mgr').hidden=true;
+  const locked=!!cur;$('lock').hidden=locked;$('main').hidden=!locked;$('devbar').hidden=!locked;$('manage').hidden=!(isMgr&&mgrMode);if(!(isMgr&&mgrMode))$('mgr').hidden=true;
   if(!locked){renderLock();return}
-  $('devs').innerHTML=`<span class="dev" style="--c:${color(cur)};background:var(--c);border-color:var(--c);color:#fff">🔒 ${esc(cur)}</span>${isMgr?'<span class="pill m">Manager</span>':''}${!devices.some(d=>d.is_manager)?'<button class="dev add" id="becomeMgr">Become manager</button>':''}`;
+  $('devs').innerHTML=`<span class="dev" style="--c:${color(cur)};background:var(--c);border-color:var(--c);color:#fff">🔒 ${esc(cur)}</span>${isMgr?`<button class="dev ${mgrMode?'':'add'}" id="mgrToggle" style="${mgrMode?'background:#facc15;border-color:#facc15;color:#111':''}">${mgrMode?'🛡 Manager mode: ON':'🛡 Manager mode: OFF'}</button>`:''}${!devices.some(d=>d.is_manager)?'<button class="dev add" id="becomeMgr">Become manager</button>':''}`;
+  const mt=$('mgrToggle');if(mt)mt.onclick=()=>{mgrMode=!mgrMode;LS('hub-mgrmode-'+user.id,mgrMode?'on':'off');renderDevices();render();if(board)board.refresh();toast(mgrMode?'Manager mode on':'Manager mode off — you see what every device sees')};
   const bm=$('becomeMgr');if(bm)bm.onclick=async()=>{if(bm.dataset.sure!=='1'){bm.dataset.sure='1';bm.textContent='Tap again to confirm';return}const {error}=await sb.rpc('hub_become_manager',{p_token:tok});if(error)return toast(error.message);await loadDevices();if(board)board.refresh();toast('You are now the manager')};
   if($('dest').options.length)renderAud();
   $('mlist').innerHTML=devices.map(d=>`<div class="row" style="justify-content:space-between"><span><span class="dot" style="--c:${color(d.name)}"></span>${esc(d.name)}${d.is_manager?'<span class="pill m">Manager</span>':d.claimed_at?'<span class="pill">🔒 Locked</span>':'<span class="pill">Open</span>'}</span>${d.name!==cur?`<span class="row">${d.claimed_at?`<button data-act="unlock" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Unlock</button>`:''}${d.claimed_at?`<button data-act="make_manager" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Make manager</button>`:''}<button data-act="remove" data-id="${d.id}" style="color:var(--bad);min-height:34px;padding:2px 10px;font-size:13px">Remove</button></span>`:''}</div>`).join('');
@@ -248,7 +250,7 @@ function render(){
     }
     const ttl=x.title||(x.kind==='file'?x.name:'');
     const size=x.kind==='file'?' · '+kb(x.size||0):' · '+x.text.length.toLocaleString()+' chars';
-    return `<article class="it" style="--c:${color(x.from)}"><div class="meta"><span class="badge">From ${esc(x.from)}</span><span>${ago(x.at)}${size}</span></div>${ttl?`<div class="ttl">${esc(ttl)}</div>`:''}${body}<div class="acts">${acts}${isMgr||x.from===cur?`<button class="del" data-a="del" data-id="${x.id}">Delete</button>`:''}</div></article>`;
+    return `<article class="it" style="--c:${color(x.from)}"><div class="meta"><span class="badge">From ${esc(x.from)}</span><span>${ago(x.at)}${size}</span></div>${ttl?`<div class="ttl">${esc(ttl)}</div>`:''}${body}<div class="acts">${acts}${(isMgr&&mgrMode)||x.from===cur?`<button class="del" data-a="del" data-id="${x.id}">Delete</button>`:''}</div></article>`;
   }).join('');
   document.querySelectorAll('img[data-img]').forEach(async im=>{const x=items.find(i=>i.id===im.dataset.img);if(x){try{im.src=await fileUrl(x)}catch(_){}}});
 }
@@ -311,7 +313,7 @@ $('dest').onfocus=syncDest;
 /* ---------- session ---------- */
 async function enter(){
   $('auth').hidden=true;$('app').hidden=false;$('who').hidden=false;$('uname').textContent='@'+uname(user);
-  if(!board)board=mountBoard({sb,user,displayName:uname(user),root:$('vBoard'),toast,device:()=>cur||'',devices:()=>devices.map(d=>d.name),token:()=>tok||'',isManager:()=>isMgr,onUnread:n=>{$('bdN').hidden=!n;$('bdN').textContent=n;syncDest()}});
+  if(!board)board=mountBoard({sb,user,displayName:uname(user),root:$('vBoard'),toast,device:()=>cur||'',devices:()=>devices.map(d=>d.name),token:()=>tok||'',isManager:()=>isMgr&&mgrMode,onUnread:n=>{$('bdN').hidden=!n;$('bdN').textContent=n;syncDest()}});
   try{await loadDevices();await cleanup();await loadDrops()}catch(e){note('st','Could not load: '+e.message,true);return}
   if(chan)sb.removeChannel(chan);
   chan=sb.channel('hub-'+user.id).on('postgres_changes',{event:'*',schema:'public',table:'hub_drops',filter:'user_id=eq.'+user.id},p=>{
