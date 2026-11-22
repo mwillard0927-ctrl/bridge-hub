@@ -116,7 +116,7 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 <div id="app" hidden style="display:grid;gap:16px">
 <section class="card" id="lock" hidden></section>
 <div class="seg" id="devbar" hidden><span>This device:</span><span id="devs" class="seg"></span><button class="dev add" id="manage" hidden>Manage devices</button></div>
-<section class="card mgr" id="mgr" hidden><b>Devices on this login</b><p class="note" style="margin:0">Only the manager device can remove, unlock or hand off devices.</p><div id="mlist" class="mgr"></div></section>
+<section class="card mgr" id="mgr" hidden><b>Devices on this login</b><p class="note" style="margin:0">Only the manager device can remove, unlock or hand off devices.</p><div id="mlist" class="mgr"></div><div class="row"><input type="text" id="mNew" placeholder="Add a device name, e.g. Grandma's iPad" maxlength="40" style="flex:1 1 200px"><button class="go" id="mAdd" style="flex:0 0 auto">Add device</button></div><p class="note" style="margin:0">New names show as Open until that person picks it and locks it in.</p></section>
 <div id="main" hidden style="display:grid;gap:16px">
 <nav class="tabs2"><button id="tabShelf" aria-pressed="true">Shelf</button><button id="tabBoard" aria-pressed="false">Boards <span id="bdN" class="bdn" hidden></span></button></nav>
 <div id="vShelf" style="display:grid;gap:16px">
@@ -236,6 +236,11 @@ $('lock').onclick=async e=>{
     if(error)return note('lst',error.message,true);LS(LKEY(),JSON.stringify({name:data.name,token}));lk={step:1,name:'',rec:false};await loadDevices();if(board)board.refresh();toast('Welcome back, '+data.name)}
 };
 $('manage').onclick=()=>{$('mgr').hidden=!$('mgr').hidden};
+$('mAdd').onclick=async()=>{const n=$('mNew').value.trim();if(!n)return toast('Type a name first.');
+  if(devices.some(d=>d.name.toLowerCase()===n.toLowerCase()))return toast('That name already exists.');
+  const {error}=await sb.rpc('hub_add_device',{p_token:tok,p_name:n});if(error)return toast(error.message);
+  $('mNew').value='';await loadDevices();if(board)board.refresh();toast('Added '+n)};
+$('mNew').onkeydown=e=>{if(e.key==='Enter')$('mAdd').click()};
 $('mlist').onclick=async e=>{const b=e.target.closest('[data-act]');if(!b)return;
   if(b.dataset.sure!=='1'){const o=b.textContent;b.dataset.sure='1';b.textContent='Tap again';setTimeout(()=>{if(b.isConnected){b.dataset.sure='';b.textContent=o}},3000);return}
   const {error}=await sb.rpc('hub_manage_device',{p_token:tok,p_device:b.dataset.id,p_action:b.dataset.act});
