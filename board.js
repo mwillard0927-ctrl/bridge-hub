@@ -53,17 +53,26 @@ const CSS = `
 .bd .act:last-child{border:0}
 `;
 
-export function mountBoard({sb, user, displayName, root, onUnread = () => {}, toast = () => {}}) {
+export function mountBoard({sb, user, displayName, root, device = () => '', devices = () => [], onUnread = () => {}, toast = () => {}}) {
   if (!document.getElementById('bd-css')) { const st = document.createElement('style'); st.id = 'bd-css'; st.textContent = CSS; document.head.append(st); }
   root.classList.add('bd');
   const me = user.id, myName = (displayName || 'user').toLowerCase();
-  let projects = [], cur = null, members = [], names = {}, posts = [], replies = [], views = [], tab = 'board', filt = 'all', openId = null, replyTo = null, unread = {}, chan = null, urls = {}, busy = false, tmr = null;
+  let autoMade = false, projects = [], cur = null, members = [], names = {}, posts = [], replies = [], views = [], tab = 'board', filt = 'all', openId = null, replyTo = null, unread = {}, chan = null, urls = {}, busy = false, tmr = null;
   try { cur = localStorage.getItem('bd-cur-' + me) } catch (_) {}
 
   const nm = id => names[id] || 'someone';
-  const viewedBy = pid => views.filter(v => v.post_id === pid).map(v => v.user_id);
+  const dev = () => device() || '';
+  const keyOf = (uid, d) => uid === me ? 'd:' + (d || '') : 'u:' + uid;
+  const label = k => k.startsWith('d:') ? (k.slice(2) || 'this account') : nm(k.slice(2));
+  const who = o => o.user_id === me ? (o.device || displayName) : nm(o.user_id) + (o.device ? ' · ' + o.device : '');
+  const viewedBy = pid => [...new Set(views.filter(v => v.post_id === pid).map(v => keyOf(v.user_id, v.device)))];
+  const audience = p => { const pk = keyOf(p.user_id, p.device); return [...new Set([...devices().map(d => 'd:' + d), ...members.filter(m => m.user_id !== me).map(m => 'u:' + m.user_id)])].filter(k => k !== pk); };
+  const mineHere = p => p.user_id === me && (p.device || '') === dev();
+  const seenHere = p => views.some(v => v.post_id === p.id && v.user_id === me && (v.device || '') === dev());
+  const isUnread = p => !mineHere(p) && !seenHere(p) && p.status === 'open';
   const isAdmin = () => members.some(m => m.user_id === me && m.role === 'admin');
-  const mentionsMe = t => new RegExp('@' + myName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(t || '');
+  const reEsc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '_?');
+  const mentionsMe = t => [myName, dev()].filter(Boolean).some(n => new RegExp('@' + reEsc(n) + '\\b', 'i').test(t || ''));
   const hl = t => esc(t).replace(/@([a-z0-9_.]{2,30})/gi, (m, n) => `<span class="mention">${m}</span>`);
   const P = () => projects.find(p => p.id === cur);
 
@@ -71,15 +80,16 @@ export function mountBoard({sb, user, displayName, root, onUnread = () => {}, to
   async function loadProjects() {
     const {data} = await sb.from('hub_projects').select('*').order('created_at');
     projects = data || [];
+    if (!projects.length && !autoMade) { autoMade = true; const {data} = await sb.rpc('hub_create_project', {p_name: displayName + "'s board"}); if (data) { projects = [data]; } }
     if (!projects.some(p => p.id === cur)) cur = projects[0]?.id || null;
   }
   async function loadUnread() {
     if (!projects.length) { unread = {}; onUnread(0); return; }
     const [{data: ps}, {data: vs}] = await Promise.all([
-      sb.from('hub_posts').select('id,project_id,user_id,status').neq('user_id', me).eq('status', 'open').limit(2000),
-      sb.from('hub_views').select('post_id').eq('user_id', me).limit(5000)]);
-    const seen = new Set((vs || []).map(v => v.post_id)); unread = {};
-    (ps || []).forEach(p => { if (!seen.has(p.id)) unread[p.project_id] = (unread[p.project_id] || 0) + 1; });
+      sb.from('hub_posts').select('id,project_id,user_id,device,status').eq('status', 'open').limit(2000),
+      sb.from('hub_views').select('post_id,device').eq('user_id', me).limit(5000)]);
+    const seen = new Set((vs || []).filter(v => (v.device || '') === dev()).map(v => v.post_id)); unread = {};
+    (ps || []).forEach(p => { if (!mineHere(p) && !seen.has(p.id)) unread[p.project_id] = (unread[p.project_id] || 0) + 1; });
     onUnread(Object.values(unread).reduce((a, b) => a + b, 0));
   }
   async function loadProject() {
@@ -106,14 +116,14 @@ export function mountBoard({sb, user, displayName, root, onUnread = () => {}, to
   }
   async function postTo(pid, {title, body, tag = 'Note', due = null, file = null}) {
     const extra = file ? await upload(pid, file) : {};
-    const {error} = await sb.from('hub_posts').insert({project_id: pid, title: title.slice(0, 140), body, tag, due: due || null, ...extra});
+    const {error} = await sb.from('hub_posts').insert({project_id: pid, device: dev() || null, title: title.slice(0, 140), body, tag, due: due || null, ...extra});
     if (error) throw error;
     soon();
   }
   async function markViewed(p) {
-    if (p.user_id === me || views.some(v => v.post_id === p.id && v.user_id === me)) return;
-    views.push({post_id: p.id, user_id: me, project_id: p.project_id, viewed_at: new Date().toISOString()});
-    await sb.from('hub_views').upsert({post_id: p.id, project_id: p.project_id}, {onConflict: 'post_id,user_id', ignoreDuplicates: true});
+    if (mineHere(p) || seenHere(p)) return;
+    views.push({post_id: p.id, user_id: me, device: dev(), project_id: p.project_id, viewed_at: new Date().toISOString()});
+    await sb.from('hub_views').upsert({post_id: p.id, project_id: p.project_id, device: dev()}, {onConflict: 'post_id,user_id,device', ignoreDuplicates: true});
     loadUnread();
   }
 
@@ -139,23 +149,22 @@ export function mountBoard({sb, user, displayName, root, onUnread = () => {}, to
     root.querySelectorAll('img[data-img]').forEach(async im => { try { im.src = await fileUrl(im.dataset.img) } catch (_) {} });
   }
   function card(p) {
-    const seen = viewedBy(p.id), isNew = p.user_id !== me && !seen.includes(me) && p.status === 'open';
-    const others = members.filter(m => m.user_id !== p.user_id).map(m => m.user_id);
-    const seenN = others.filter(u => seen.includes(u)), waiting = others.length - seenN.length;
+    const seen = viewedBy(p.id), isNew = isUnread(p);
+    const others = audience(p);
+    const seenN = others.filter(k => seen.includes(k)), waiting = others.length - seenN.length;
     const rc = replies.filter(r => r.post_id === p.id).length;
     const late = p.due && p.status === 'open' && new Date(p.due + 'T23:59') < new Date();
     const ment = mentionsMe(p.body) || mentionsMe(p.title);
     return `<article class="post${isNew ? ' unread' : ''}${ment ? ' ment' : ''}${p.status === 'resolved' ? ' res' : ''}" style="--tc:${TAGC[p.tag] || '#64748b'}" data-open="${p.id}">
-      <div class="ph"><span class="tag">${esc(p.tag || 'Note')}</span>${isNew ? '<span class="new">NEW</span>' : ''}${p.pinned ? '📌' : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(nm(p.user_id))} · ${ago(p.created_at)}</span></div>
+      <div class="ph"><span class="tag">${esc(p.tag || 'Note')}</span>${isNew ? '<span class="new">NEW</span>' : ''}${p.pinned ? '📌' : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(who(p))} · ${ago(p.created_at)}</span></div>
       <div class="pt">${hl(p.title)}</div>
       ${p.body ? `<div class="pb">${hl(p.body.length > 180 ? p.body.slice(0, 180) + '…' : p.body)}</div>` : ''}
-      <div class="pf"><span>💬 ${rc}</span><span>👁 ${seenN.length ? 'Seen by ' + esc(seenN.map(nm).join(', ')) : 'Not seen yet'}${waiting > 0 ? ' · waiting on ' + waiting : ''}</span>${p.due ? `<span class="${late ? 'late' : ''}">📅 ${late ? 'Overdue · ' : 'Due '}${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}${p.file_name ? '<span>📎 ' + esc(p.file_name) + '</span>' : ''}</div></article>`;
+      <div class="pf"><span>💬 ${rc}</span><span>👁 ${seenN.length ? 'Seen by ' + esc(seenN.map(label).join(', ')) : 'Not seen yet'}${waiting > 0 ? ' · waiting on ' + waiting : ''}</span>${p.due ? `<span class="${late ? 'late' : ''}">📅 ${late ? 'Overdue · ' : 'Due '}${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}${p.file_name ? '<span>📎 ' + esc(p.file_name) + '</span>' : ''}</div></article>`;
   }
   function board() {
     let L = posts;
     if (filt === 'mine') L = L.filter(p => mentionsMe(p.body) || mentionsMe(p.title) || replies.some(r => r.post_id === p.id && mentionsMe(r.body)));
     else if (filt !== 'all') L = L.filter(p => p.tag === filt);
-    const isUnread = p => p.user_id !== me && !viewedBy(p.id).includes(me) && p.status === 'open';
     const pinned = L.filter(p => p.pinned && p.status === 'open');
     const un = L.filter(p => !p.pinned && isUnread(p));
     const open = L.filter(p => !p.pinned && !isUnread(p) && p.status === 'open');
@@ -179,40 +188,40 @@ export function mountBoard({sb, user, displayName, root, onUnread = () => {}, to
   function tree(postId, parent, depth) {
     const kids = replies.filter(r => r.post_id === postId && (r.parent_id || null) === parent);
     if (!kids.length) return '';
-    return kids.map(r => `<div class="rep"><div class="who"><b>${esc(nm(r.user_id))}</b> · ${ago(r.created_at)}</div><div class="pb">${hl(r.body)}</div>${fileBlock(r)}
+    return kids.map(r => `<div class="rep"><div class="who"><b>${esc(who(r))}</b> · ${ago(r.created_at)}</div><div class="pb">${hl(r.body)}</div>${fileBlock(r)}
       <div class="acts"><button data-rto="${r.id}">Reply</button>${r.user_id === me || isAdmin() ? `<button class="bad" data-rdel="${r.id}">Delete</button>` : ''}</div>
       ${(() => { const k = tree(postId, r.id, depth + 1); return k ? `<div class="kids"${depth >= 3 ? ' style="margin-left:0"' : ''}>${k}</div>` : '' })()}</div>`).join('');
   }
   function detail() {
     const p = posts.find(x => x.id === openId); if (!p) { openId = null; return board(); }
     const can = p.user_id === me || isAdmin();
-    const seen = viewedBy(p.id), others = members.filter(m => m.user_id !== p.user_id);
+    const seen = viewedBy(p.id), others = audience(p);
     const rt = replyTo ? replies.find(r => r.id === replyTo) : null;
     return `<div class="det"><div class="row"><button data-x="back">← Back to board</button></div>
-      <article class="post" style="--tc:${TAGC[p.tag] || '#64748b'};cursor:default"><div class="ph"><span class="tag">${esc(p.tag)}</span>${p.pinned ? '📌 Pinned' : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(nm(p.user_id))} · ${ago(p.created_at)}</span>${p.due ? `<span>📅 Due ${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}</div>
+      <article class="post" style="--tc:${TAGC[p.tag] || '#64748b'};cursor:default"><div class="ph"><span class="tag">${esc(p.tag)}</span>${p.pinned ? '📌 Pinned' : ''}${p.status === 'resolved' ? '✅ Resolved' : ''}<span>${esc(who(p))} · ${ago(p.created_at)}</span>${p.due ? `<span>📅 Due ${new Date(p.due + 'T12:00').toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}</span>` : ''}</div>
       <div class="pt" style="font-size:21px">${hl(p.title)}</div>${p.body ? `<div class="pb">${hl(p.body)}</div>` : ''}${fileBlock(p)}
       <div class="row">${can ? `<button data-x="status">${p.status === 'open' ? '✅ Mark resolved' : '↩ Reopen'}</button><button data-x="pin">${p.pinned ? 'Unpin' : '📌 Pin'}</button><button class="bad" data-x="delpost">Delete</button>` : ''}</div>
-      <div class="pf">👁 ${others.map(m => `${seen.includes(m.user_id) ? '✓' : '○'} ${esc(nm(m.user_id))}`).join(' · ') || 'Only you so far'}</div></article>
+      <div class="pf">👁 ${others.map(k => `${seen.includes(k) ? '✓' : '○'} ${esc(label(k))}`).join(' · ') || 'No one else yet'}</div></article>
       <div class="sec">Conversation (${replies.filter(r => r.post_id === p.id).length})</div>
       ${tree(p.id, null, 0) || '<div class="empty" style="padding:14px">No replies yet.</div>'}
-      <div class="panel" id="bd-reply">${rt ? `<div class="row" style="font-size:14px;color:var(--mute)">Replying to <b style="color:var(--ink)">${esc(nm(rt.user_id))}</b><button data-x="cancelrt" style="min-height:30px;padding:2px 10px;font-size:13px">Cancel</button></div>` : ''}
+      <div class="panel" id="bd-reply">${rt ? `<div class="row" style="font-size:14px;color:var(--mute)">Replying to <b style="color:var(--ink)">${esc(who(rt))}</b><button data-x="cancelrt" style="min-height:30px;padding:2px 10px;font-size:13px">Cancel</button></div>` : ''}
       <textarea id="bd-r" placeholder="Write a reply… @name to mention"></textarea>
       <div class="row"><input type="file" id="bd-rf" style="flex:1 1 200px;font-size:14px"><button class="go" data-x="reply" style="flex:1 1 140px">Send reply</button></div></div></div>`;
   }
   function activity() {
-    const ev = [...posts.map(p => ({t: p.created_at, who: p.user_id, txt: `posted <b>${esc(p.title)}</b>`, id: p.id})),
-      ...replies.map(r => { const p = posts.find(x => x.id === r.post_id); return {t: r.created_at, who: r.user_id, txt: `replied to <b>${esc(p ? p.title : 'a post')}</b>`, id: r.post_id} })]
+    const ev = [...posts.map(p => ({t: p.created_at, who: who(p), txt: `posted <b>${esc(p.title)}</b>`, id: p.id})),
+      ...replies.map(r => { const p = posts.find(x => x.id === r.post_id); return {t: r.created_at, who: who(r), txt: `replied to <b>${esc(p ? p.title : 'a post')}</b>`, id: r.post_id} })]
       .sort((a, b) => new Date(b.t) - new Date(a.t)).slice(0, 60);
-    return `<div class="panel">${ev.length ? ev.map(e => `<div class="act" data-open="${e.id}"><b>${esc(nm(e.who))}</b> ${e.txt} · <span style="color:var(--mute)">${ago(e.t)}</span></div>`).join('') : '<span style="color:var(--mute)">No activity yet.</span>'}</div>`;
+    return `<div class="panel">${ev.length ? ev.map(e => `<div class="act" data-open="${e.id}"><b>${esc(e.who)}</b> ${e.txt} · <span style="color:var(--mute)">${ago(e.t)}</span></div>`).join('') : '<span style="color:var(--mute)">No activity yet.</span>'}</div>`;
   }
   function files() {
     const f = [...posts.filter(p => p.file_path).map(p => ({...p, from: p.title, pid: p.id})), ...replies.filter(r => r.file_path).map(r => ({...r, from: (posts.find(p => p.id === r.post_id) || {}).title, pid: r.post_id}))]
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    return `<div class="panel">${f.length ? f.map(x => `<div class="act" style="cursor:default"><span class="flink" data-file="${esc(x.file_path)}">📎 ${esc(x.file_name)}</span> <span style="color:var(--mute);font-size:13px">${kb(x.file_size || 0)} · ${esc(nm(x.user_id))} · ${ago(x.created_at)} · in <a href="#" data-open="${x.pid}" style="color:var(--ink)">${esc(x.from || 'post')}</a></span></div>`).join('') : '<span style="color:var(--mute)">No files shared yet.</span>'}</div>`;
+    return `<div class="panel">${f.length ? f.map(x => `<div class="act" style="cursor:default"><span class="flink" data-file="${esc(x.file_path)}">📎 ${esc(x.file_name)}</span> <span style="color:var(--mute);font-size:13px">${kb(x.file_size || 0)} · ${esc(who(x))} · ${ago(x.created_at)} · in <a href="#" data-open="${x.pid}" style="color:var(--ink)">${esc(x.from || 'post')}</a></span></div>`).join('') : '<span style="color:var(--mute)">No files shared yet.</span>'}</div>`;
   }
   function membersView() {
     const p = P(), adm = isAdmin();
-    return `<div class="panel"><b>Invite code</b><div class="code">${esc(p.invite_code)}</div><span style="color:var(--mute);font-size:14px">Anyone signed in to Phone Bridge or Bridge Hub can join with this code.</span><div class="row"><button data-x="copycode">Copy code</button></div></div>
+    return `<div class="panel"><b>Invite code</b><div class="code">${esc(p.invite_code)}</div><span style="color:var(--mute);font-size:14px">Anyone on your login already sees this board. To bring in someone with their own login, give them this code.</span><div class="row"><button data-x="copycode">Copy code</button></div></div>
       <div class="panel"><b>Members (${members.length})</b>${members.map(m => `<div class="row" style="justify-content:space-between"><span>${esc(nm(m.user_id))}${m.user_id === me ? ' (you)' : ''} ${m.role === 'admin' ? '· <b>admin</b>' : ''}</span>${adm && m.user_id !== me ? `<span class="row"><button data-role="${m.user_id}" style="min-height:32px;padding:2px 10px;font-size:13px">${m.role === 'admin' ? 'Make member' : 'Make admin'}</button><button class="bad" data-kick="${m.user_id}" style="min-height:32px;padding:2px 10px;font-size:13px">Remove</button></span>` : ''}</div>`).join('')}</div>
       <div class="panel">${adm ? `<b>Project settings</b><div class="row"><input type="text" id="bd-rn" value="${esc(p.name)}" maxlength="60" style="flex:1 1 200px"><button data-x="rename">Rename</button></div><button class="bad" data-x="delproj">Delete project</button>` : ''}<button class="bad" data-x="leave">Leave project</button></div>`;
   }
@@ -260,7 +269,7 @@ export function mountBoard({sb, user, displayName, root, onUnread = () => {}, to
     else if (x === 'reply') {
       const body = root.querySelector('#bd-r').value.trim(), f = root.querySelector('#bd-rf').files[0]; if (!body) return toast('Write something first.');
       busy = true; b.disabled = true; b.textContent = 'Sending…';
-      try { const extra = f ? await upload(cur, f) : {}; const {error} = await sb.from('hub_replies').insert({post_id: p.id, project_id: cur, parent_id: replyTo, body, ...extra}); if (error) throw error; root.querySelector('#bd-r').value = ''; replyTo = null; await loadProject(); render(); }
+      try { const extra = f ? await upload(cur, f) : {}; const {error} = await sb.from('hub_replies').insert({post_id: p.id, project_id: cur, device: dev() || null, parent_id: replyTo, body, ...extra}); if (error) throw error; root.querySelector('#bd-r').value = ''; replyTo = null; await loadProject(); render(); }
       catch (err) { b.disabled = false; b.textContent = 'Send reply'; throw err; }
       finally { busy = false; }
     } else if (x === 'status') { await sb.from('hub_posts').update({status: p.status === 'open' ? 'resolved' : 'open', updated_at: new Date().toISOString()}).eq('id', p.id); await loadProject(); render(); }

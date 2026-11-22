@@ -75,7 +75,7 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 </head>
 <body>
 <div class="wrap">
-<header class="hdr"><div><h1>Bridge Hub</h1><p class="sub">Your own private shelf. Drop text or files on one device, pick them up on another.</p></div>
+<header class="hdr"><div><h1>Bridge Hub</h1><p class="sub">A shelf and message board for everyone who shares your login. Drop text or files on one device, pick them up on another.</p></div>
 <div class="who" id="who" hidden><span id="uname"></span><br><button id="out">Sign out</button></div></header>
 
 <section class="card" id="auth" hidden>
@@ -83,7 +83,7 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 <input type="text" id="u" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20">
 <input type="password" id="p" placeholder="Password (6+ characters)" autocomplete="current-password">
 <input type="password" id="p2" placeholder="Type password again" autocomplete="new-password" hidden>
-<p class="note" id="aHint">Usernames: 3–20 letters, numbers or _. There's no password reset, so keep it somewhere safe.</p>
+<p class="note" id="aHint">Usernames: 3–20 letters, numbers or _. Anyone you give this username and password to shares the same shelf and board. There's no password reset, so keep it somewhere safe.</p>
 <button class="go" id="aGo">Sign in</button>
 <p class="note" id="aSt"></p>
 </section>
@@ -164,7 +164,7 @@ function renderDevices(){
   else if(!cur)note('st','Tap which device this is.');
   upd();
 }
-$('devs').onclick=e=>{const b=e.target.closest('[data-d]');if(!b)return;cur=b.dataset.d;LS('hub-dev-'+user.id,cur);renderDevices();note('st','Ready.')};
+$('devs').onclick=e=>{const b=e.target.closest('[data-d]');if(!b)return;cur=b.dataset.d;LS('hub-dev-'+user.id,cur);renderDevices();note('st','Ready.');if(board)board.refresh()};
 $('addDev').onclick=()=>{$('mgr').hidden=false;$('newDev').focus()};
 $('manage').onclick=()=>{$('mgr').hidden=!$('mgr').hidden};
 $('saveDev').onclick=async()=>{
@@ -261,7 +261,7 @@ $('dest').onfocus=syncDest;
 /* ---------- session ---------- */
 async function enter(){
   $('auth').hidden=true;$('app').hidden=false;$('who').hidden=false;$('uname').textContent='@'+uname(user);
-  if(!board)board=mountBoard({sb,user,displayName:uname(user),root:$('vBoard'),toast,onUnread:n=>{$('bdN').hidden=!n;$('bdN').textContent=n;syncDest()}});
+  if(!board)board=mountBoard({sb,user,displayName:uname(user),root:$('vBoard'),toast,device:()=>cur||'',devices:()=>devices.map(d=>d.name),onUnread:n=>{$('bdN').hidden=!n;$('bdN').textContent=n;syncDest()}});
   try{await loadDevices();await cleanup();await loadDrops()}catch(e){note('st','Could not load: '+e.message,true);return}
   if(chan)sb.removeChannel(chan);
   chan=sb.channel('hub-'+user.id).on('postgres_changes',{event:'*',schema:'public',table:'hub_drops',filter:'user_id=eq.'+user.id},p=>{
