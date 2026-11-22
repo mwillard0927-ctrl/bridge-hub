@@ -93,8 +93,8 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
       if (ls && new Date(ls) > new Date(p.created_at)) out.since.push({k, at: ls}); else out.not.push({k, at: ls}); });
     return out; };
   const tm = t => t ? new Date(t).toLocaleString('en-US', {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}) : 'never';
-  const projChips = (sel, attr) => { const L = others(); if (!L.length) return '<span>No other devices yet.</span>';
-    return '<span>Who can see it:</span>' + L.map(n => `<button type="button" class="tg au" ${attr}="${esc(n)}" aria-pressed="${!sel.has(n)}">${esc(n)}</button>`).join('') + `<b style="font-size:13px;color:var(--ink)">${L.every(n => !sel.has(n)) ? '🌐 All devices' : '🔒 Only selected'}</b>`; };
+  const projChips = (sel, attr) => { const L = others(); if (!L.length) return '<span>No other users yet.</span>';
+    return '<span>Who can see it:</span>' + L.map(n => `<button type="button" class="tg au" ${attr}="${esc(n)}" aria-pressed="${!sel.has(n)}">${esc(n)}</button>`).join('') + `<b style="font-size:13px;color:var(--ink)">${L.every(n => !sel.has(n)) ? '🌐 Everyone' : '🔒 Only selected'}</b>`; };
   const newProjForm = () => `<div class="panel"><b>Start a project</b><div class="row"><input type="text" id="bd-nx" placeholder="Project name" maxlength="60" style="flex:1 1 200px"><button class="go" data-x="new-go">Create</button></div><div class="tagbar" id="bd-pch">${projChips(pExcl, 'data-pd')}</div></div>`;
   const isUnread = p => !mineHere(p) && !seenHere(p) && p.status === 'open';
   const isAdmin = () => members.some(m => m.user_id === me && m.role === 'admin');
@@ -270,9 +270,9 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
     const p = P(), can = isManager() || (p.created_by_device || '').toLowerCase() === dev().toLowerCase();
     const allDev = devices();
     eExcl = new Set(p.allowed ? others().filter(n => !p.allowed.some(a => a.toLowerCase() === n.toLowerCase())) : []);
-    return `<div class="panel"><b>Who can see this project</b><div>${p.allowed ? '🔒 ' + esc(p.allowed.join(', ')) : '🌐 All devices on this login'}</div>
+    return `<div class="panel"><b>Who can see this project</b><div>${p.allowed ? '🔒 ' + esc(p.allowed.join(', ')) : '🌐 Everyone on this board'}</div>
       ${p.created_by_device ? `<span style="color:var(--mute);font-size:14px">Started by ${esc(p.created_by_device)}</span>` : ''}
-      ${can ? `<div class="tagbar" id="bd-ech">${projChips(eExcl, 'data-ed')}</div><div class="row"><button class="go" data-x="saveacc">Save who can see it</button></div>` : '<span style="color:var(--mute);font-size:14px">Only the device that started this project, or the manager, can change this.</span>'}</div>
+      ${can ? `<div class="tagbar" id="bd-ech">${projChips(eExcl, 'data-ed')}</div><div class="row"><button class="go" data-x="saveacc">Save who can see it</button></div>` : '<span style="color:var(--mute);font-size:14px">Only the user who started this project, or the manager, can change this.</span>'}</div>
       ${can ? `<div class="panel"><b>Project settings</b><div class="row"><input type="text" id="bd-rn" value="${esc(p.name)}" maxlength="60" style="flex:1 1 200px"><button data-x="rename">Rename</button></div><button class="bad" data-x="delproj">Delete project</button></div>` : ''}`;
   }
 

@@ -90,15 +90,15 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 </head>
 <body>
 <div class="wrap">
-<header class="hdr"><div><h1>Bridge Hub</h1><p class="sub">A shelf and message board for everyone who shares your login. Drop text or files on one device, pick them up on another.</p></div>
+<header class="hdr"><div><h1>Bridge Hub</h1><p class="sub">A shelf and message board for everyone who shares your login. Drop text or files on one phone, pick them up on another.</p></div>
 <div class="who" id="who" hidden><span id="uname"></span><br><button id="out">Sign out</button></div></header>
 
 <section class="card" id="auth" hidden>
 <div class="tabs"><button id="tIn" aria-pressed="true">Sign in</button><button id="tUp" aria-pressed="false">Create account</button></div>
-<input type="text" id="u" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20">
+<input type="text" id="u" placeholder="Board username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="20">
 <input type="password" id="p" placeholder="Password (6+ characters)" autocomplete="current-password">
 <input type="password" id="p2" placeholder="Type password again" autocomplete="new-password" hidden>
-<p class="note" id="aHint">Usernames: 3–20 letters, numbers or _. Anyone you give this username and password to shares the same shelf and board. There's no password reset, so keep it somewhere safe.</p>
+<p class="note" id="aHint">Board username: 3–20 letters, numbers or _. Anyone you give this board username and password to shares the same shelf and board. There's no password reset, so keep it somewhere safe.</p>
 <button class="go" id="aGo">Sign in</button>
 <p class="note" id="aSt"></p>
 </section>
@@ -106,17 +106,17 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 <summary><b>New here? How Bridge Hub works</b></summary>
 <p class="note" style="margin:0">A private shelf and message board for your people: family, friends or any group. Free, and works in any phone browser.</p>
 <h3>Get started</h3>
-<ol class="gsteps"><li><b>Tap Create account.</b> Pick a username and password. No email needed, and no password reset, so save it.</li><li><b>Name this device</b> (like "Sam's phone") and confirm 3 times. The first device can choose to be the <b>Manager</b>.</li><li><b>Save your recovery code</b> and add the app to your home screen.</li><li><b>Share the username and password</b> with the people you want in, whether that's family, friends or coworkers. Everyone on that login shares one shelf and board, each under their own device name.</li><li><b>Already have a login?</b> Tap <b>Sign in</b>, then pick your name (or recover it with your code).</li></ol>
+<ol class="gsteps"><li><b>Tap Create account.</b> Pick a username and password. No email needed, and no password reset, so save it.</li><li><b>Pick your user name</b> (like "Sam") and confirm 3 times. The first user can choose to be the <b>Manager</b>.</li><li><b>Save your recovery code</b> and add the app to your home screen.</li><li><b>Share the username and password</b> with the people you want in, whether that's family, friends or coworkers. Everyone on that login shares one shelf and board, each under their own user name.</li><li><b>Already have a login?</b> Tap <b>Sign in</b>, then pick your name (or recover it with your code).</li></ol>
 <h3>What it does</h3>
-<ul class="gfeat"><li><b>Shelf.</b> Drop text, links or files on one device and grab them on another. Clears itself after 7 days.</li><li><b>Message board.</b> Post notes tagged Note, Idea, Question, Decision or Urgent, with an optional due date.</li><li><b>Private posts.</b> Under "Who sees it," turn off anyone to send only to the devices you pick.</li><li><b>Threads.</b> Reply to a post or to a specific reply. Posts can be marked resolved.</li><li><b>Tag people.</b> Tap a device name to call someone out; their post gets highlighted.</li><li><b>Files and photos.</b> Attach up to 10 MB per file. The Files tab lists everything shared.</li><li><b>Projects.</b> Anyone can start a separate board and choose which devices can see it.</li><li><b>NEW badges and live updates.</b> Unread posts stay marked until you open them.</li><li><b>Activity feed.</b> See the latest posts and replies at a glance.</li><li><b>Locked device names.</b> Each phone keeps one name, so you always know who posted.</li></ul>
-<div class="gmgr"><h3>If you're the Manager</h3><ul class="gfeat"><li><b>Manage devices.</b> Remove, unlock or hand off the manager role.</li><li><b>Moderate.</b> Pin, resolve or delete any post or reply.</li><li><b>Read tracking.</b> See who read each post, who was on but skipped it, and who opened files.</li><li><b>Manager mode switch.</b> Turn the tools off to see the app like everyone else.</li></ul></div>
+<ul class="gfeat"><li><b>Shelf.</b> Drop text, links or files on one phone and grab them on another. Clears itself after 7 days.</li><li><b>Message board.</b> Post notes tagged Note, Idea, Question, Decision or Urgent, with an optional due date.</li><li><b>Private posts.</b> Under "Who sees it," turn off anyone to send only to the users you pick.</li><li><b>Threads.</b> Reply to a post or to a specific reply. Posts can be marked resolved.</li><li><b>Tag people.</b> Tap a user's name to call them out; the post gets highlighted for them.</li><li><b>Files and photos.</b> Attach up to 10 MB per file. The Files tab lists everything shared.</li><li><b>Projects.</b> Anyone can start a separate board and choose which users can see it.</li><li><b>NEW badges and live updates.</b> Unread posts stay marked until you open them.</li><li><b>Activity feed.</b> See the latest posts and replies at a glance.</li><li><b>Locked user names.</b> Each phone keeps one name, so you always know who posted. <small>(A user is any phone or device labeled with that person's name.)</small></li></ul>
+<div class="gmgr"><h3>If you're the Manager</h3><ul class="gfeat"><li><b>Manage users.</b> Add, remove or unlock users, or hand off the manager role.</li><li><b>Moderate.</b> Pin, resolve or delete any post or reply.</li><li><b>Read tracking.</b> See who read each post, who was on but skipped it, and who opened files.</li><li><b>Manager mode switch.</b> Turn the tools off to see the app like everyone else.</li></ul></div>
 <p class="note" style="margin:0">Private by design: each login only sees its own shelf and boards, and no email or phone number is collected. Don't post passwords or anything highly sensitive.</p>
 </details>
 
 <div id="app" hidden style="display:grid;gap:16px">
 <section class="card" id="lock" hidden></section>
-<div class="seg" id="devbar" hidden><span>This device:</span><span id="devs" class="seg"></span><button class="dev add" id="manage" hidden>Manage devices</button></div>
-<section class="card mgr" id="mgr" hidden><b>Devices on this login</b><p class="note" style="margin:0">Only the manager device can remove, unlock or hand off devices.</p><div id="mlist" class="mgr"></div><div class="row"><input type="text" id="mNew" placeholder="Add a device name, e.g. Grandma's iPad" maxlength="40" style="flex:1 1 200px"><button class="go" id="mAdd" style="flex:0 0 auto">Add device</button></div><p class="note" style="margin:0">New names show as Open until that person picks it and locks it in.</p></section>
+<div class="seg" id="devbar" hidden><span>You are:</span><span id="devs" class="seg"></span><button class="dev add" id="manage" hidden>Manage users</button></div>
+<section class="card mgr" id="mgr" hidden><b>Users on this board <small style="font-weight:500;color:var(--mute)">(a user is any phone or device labeled with that person's name)</small></b><p class="note" style="margin:0">Only the manager can add, remove, unlock or hand off users.</p><div id="mlist" class="mgr"></div><div class="row"><input type="text" id="mNew" placeholder="Add a user, e.g. Grandma" maxlength="40" style="flex:1 1 200px"><button class="go" id="mAdd" style="flex:0 0 auto">Add user</button></div><p class="note" style="margin:0">New users show as Open until that person picks their name on their phone and locks it in.</p></section>
 <div id="main" hidden style="display:grid;gap:16px">
 <nav class="tabs2"><button id="tabShelf" aria-pressed="true">Shelf</button><button id="tabBoard" aria-pressed="false">Boards <span id="bdN" class="bdn" hidden></span></button></nav>
 <div id="vShelf" style="display:grid;gap:16px">
@@ -194,7 +194,7 @@ function renderDevices(){
   const locked=!!cur;$('lock').hidden=locked;$('main').hidden=!locked;$('devbar').hidden=!locked;$('manage').hidden=!(isMgr&&mgrMode);if(!(isMgr&&mgrMode))$('mgr').hidden=true;
   if(!locked){renderLock();return}
   $('devs').innerHTML=`<span class="dev" style="--c:${color(cur)};background:var(--c);border-color:var(--c);color:#fff">🔒 ${esc(cur)}</span>${isMgr?`<span class="pill m">Manager</span><button id="mgrToggle" role="switch" aria-checked="${mgrMode}" class="sw${mgrMode?' on':''}"><span class="knob"></span><span class="swl">${mgrMode?'ON':'OFF'}</span></button>`:''}${!devices.some(d=>d.is_manager)?'<button class="dev add" id="becomeMgr">Become manager</button>':''}`;
-  const mt=$('mgrToggle');if(mt)mt.onclick=()=>{mgrMode=!mgrMode;LS('hub-mgrmode-'+user.id,mgrMode?'on':'off');renderDevices();render();if(board)board.refresh();toast(mgrMode?'Manager mode on':'Manager mode off — you see what every device sees')};
+  const mt=$('mgrToggle');if(mt)mt.onclick=()=>{mgrMode=!mgrMode;LS('hub-mgrmode-'+user.id,mgrMode?'on':'off');renderDevices();render();if(board)board.refresh();toast(mgrMode?'Manager mode on':'Manager mode off. You see what every user sees.')};
   const bm=$('becomeMgr');if(bm)bm.onclick=async()=>{if(bm.dataset.sure!=='1'){bm.dataset.sure='1';bm.textContent='Tap again to confirm';return}const {error}=await sb.rpc('hub_become_manager',{p_token:tok});if(error)return toast(error.message);await loadDevices();if(board)board.refresh();toast('You are now the manager')};
   if($('dest').options.length)renderAud();
   $('mlist').innerHTML=devices.map(d=>`<div class="row" style="justify-content:space-between"><span><span class="dot" style="--c:${color(d.name)}"></span>${esc(d.name)}${d.is_manager?'<span class="pill m">Manager</span>':d.claimed_at?'<span class="pill">🔒 Locked</span>':'<span class="pill">Open</span>'}</span>${d.name!==cur?`<span class="row">${d.claimed_at?`<button data-act="unlock" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Unlock</button>`:''}${d.claimed_at?`<button data-act="make_manager" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Make manager</button>`:''}<button data-act="remove" data-id="${d.id}" style="color:var(--bad);min-height:34px;padding:2px 10px;font-size:13px">Remove</button></span>`:''}</div>`).join('');
@@ -203,18 +203,18 @@ function renderDevices(){
 }
 function renderLock(){
   const open=devices.filter(d=>!d.claimed_at),taken=devices.filter(d=>d.claimed_at),L=$('lock'),n=esc(lk.name);
-  if(lk.rec){L.innerHTML=`<b>Recover a locked device</b><p class="note" style="margin:0">Use the recovery code that was shown when the device was locked in.</p>
+  if(lk.rec){L.innerHTML=`<b>Recover your user name</b><p class="note" style="margin:0">Use the recovery code you saved when you first locked in your name.</p>
     <select id="rName" style="font:16px var(--body);min-height:44px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);padding:0 10px">${taken.map(d=>`<option>${esc(d.name)}</option>`).join('')}</select>
     <input type="text" id="rCode" placeholder="Recovery code" autocapitalize="characters" spellcheck="false">
     <div class="row"><button data-l="back1">Back</button><button class="go" data-l="recover">Recover</button></div><p class="note" id="lst"></p>`;return}
-  if(lk.step===1)L.innerHTML=`<b>Which device is this?</b><p class="note" style="margin:0">Pick your name or add a new one. Once you lock it in, everything you post from here shows under that name.</p>
+  if(lk.step===1)L.innerHTML=`<b>Who are you?</b><p class="note" style="margin:0">Pick your name or add a new one. Once you lock it in on this phone, everything you post from here shows under that name.</p>
     ${open.length?`<div class="row">${open.map(d=>`<button class="dev" style="--c:${color(d.name)}" data-pick="${esc(d.name)}">${esc(d.name)}</button>`).join('')}</div>`:''}
-    <div class="row"><input type="text" id="lNew" placeholder="Or a new name, e.g. Christina" maxlength="40" style="flex:1 1 200px"><button class="go" data-l="new" style="flex:0 0 auto">Next</button></div>
-    ${taken.length?`<button data-l="rec" style="justify-self:start;min-height:36px;font-size:14px">Already locked this name before? Recover it</button>`:''}`;
-  else if(lk.step===2)L.innerHTML=`<b>Step 1 of 3</b><div class="lockname">${n}</div><p style="margin:0">This device will be locked in as <b>${n}</b>. Every post, reply and drop from here will show as ${n}. You won't be able to switch names from this device. Only the manager can change it.</p><div class="row"><button data-l="back1">Back</button><button class="go" data-l="to3">Yes, continue</button></div>`;
+    <div class="row"><input type="text" id="lNew" placeholder="Or add yourself, e.g. Christina" maxlength="40" style="flex:1 1 200px"><button class="go" data-l="new" style="flex:0 0 auto">Next</button></div>
+    ${taken.length?`<button data-l="rec" style="justify-self:start;min-height:36px;font-size:14px">Already set up your name on another phone? Recover it</button>`:''}`;
+  else if(lk.step===2)L.innerHTML=`<b>Step 1 of 3</b><div class="lockname">${n}</div><p style="margin:0">This phone will be locked in as <b>${n}</b>. Every post, reply and drop from here will show as ${n}. You won't be able to switch names from this phone. Only the manager can change it.</p><div class="row"><button data-l="back1">Back</button><button class="go" data-l="to3">Yes, continue</button></div>`;
   else if(lk.step===3)L.innerHTML=`<b>Step 2 of 3</b><p style="margin:0">Type <b>${n}</b> exactly to confirm.</p><input type="text" id="lType" autocomplete="off" spellcheck="false"><div class="row"><button data-l="back1">Back</button><button class="go" data-l="to4">Confirm</button></div><p class="note" id="lst"></p>`;
-  else if(lk.step===35)L.innerHTML=`<b>This board doesn't have a manager yet</b><p style="margin:0">Will <b>${n}</b> be the manager (admin) of this board? The manager is the only device that can delete, pin or resolve posts, and remove, unlock or hand off devices.</p><div class="row"><button data-l="mgrNo">No, just a member</button><button class="go" data-l="mgrYes">Yes, I'm the manager</button></div>`;
-  else if(lk.step===4)L.innerHTML=`<b>Step 3 of 3: final check</b><div class="lockname">🔒 ${n}</div><p style="margin:0">Lock this device in as <b>${n}</b>${lk.wantMgr?' as the <b>manager</b>':''} for good?</p><div class="row"><button data-l="back1">Cancel</button><button class="go" data-l="claim">Lock it in</button></div><p class="note" id="lst"></p>`;
+  else if(lk.step===35)L.innerHTML=`<b>This board doesn't have a manager yet</b><p style="margin:0">Will <b>${n}</b> be the manager (admin) of this board? The manager is the only one who can delete, pin or resolve posts, and add, remove, unlock or hand off users.</p><div class="row"><button data-l="mgrNo">No, just a member</button><button class="go" data-l="mgrYes">Yes, I'm the manager</button></div>`;
+  else if(lk.step===4)L.innerHTML=`<b>Step 3 of 3: final check</b><div class="lockname">🔒 ${n}</div><p style="margin:0">Lock this phone in as <b>${n}</b>${lk.wantMgr?' as the <b>manager</b>':''} for good?</p><div class="row"><button data-l="back1">Cancel</button><button class="go" data-l="claim">Lock it in</button></div><p class="note" id="lst"></p>`;
   else if(lk.step===5)L.innerHTML=`<b>Locked in as ${n}${lk.mgr?' (Manager)':''}</b><p style="margin:0">Save this recovery code somewhere safe. You'll need it to use <b>${n}</b> on a new phone or browser, or if this browser's data gets cleared.</p><div class="code">${esc(lk.code)}</div><div class="row"><button data-l="copy">Copy code</button><button class="go" data-l="done">I saved it, continue</button></div>`;
 }
 $('lock').onclick=async e=>{
@@ -262,7 +262,7 @@ async function loadDrops(){const {data,error}=await sb.from('hub_drops').select(
 async function fileUrl(x){if(urls[x.id])return urls[x.id];const {data,error}=await sb.storage.from('hub').createSignedUrl(x.path,3600);if(error)throw error;return urls[x.id]=data.signedUrl}
 function render(){
   const L=items.filter(x=>filt==='all'||x.from===filt).sort((a,b)=>b.at-a.at);
-  if(!L.length){$('list').innerHTML=`<div class="empty">${items.length?'Nothing from that device yet.':'Nothing waiting. Send something and it shows up on all your devices.'}</div>`;return}
+  if(!L.length){$('list').innerHTML=`<div class="empty">${items.length?'Nothing from that user yet.':'Nothing waiting. Send something and everyone on this board can pick it up.'}</div>`;return}
   $('list').innerHTML=L.map(x=>{
     const isOpen=open.has(x.id);let body='',acts='';
     if(x.kind==='text'){
@@ -301,7 +301,7 @@ $('send').onclick=async()=>{
   upd();
 };
 async function sendFiles(fs){
-  if(!cur){note('st','Lock in this device first.',true);return}
+  if(!cur){note('st','Pick your name first.',true);return}
   const title=$('title').value.trim();let n=0;
   if($('dest').value){for(const f of fs){note('st','Uploading '+f.name+'…');try{await board.postTo($('dest').value,{title:title||f.name,body:'',file:f,recipients:shelfRecip()});n++}catch(e){note('st','Could not post '+f.name+': '+e.message,true)}}if(n){$('title').value='';note('st',n+' file post'+(n>1?'s':'')+' added to the board.');toast('Posted')}return}
   for(const f of fs){if(f.size>MAXF){note('st',f.name+' is over 10 MB.',true);continue}
@@ -327,7 +327,7 @@ function syncDest(){const d=$('dest'),v=d.value;const ps=board?board.projects():
   d.value=destTouched&&[...d.options].some(o=>o.value===v)?v:(ps[0]?.id||'');renderAud()}
 function audList(){const pr=board?board.projects().find(p=>p.id===$('dest').value):null;let L=devices.map(x=>x.name).filter(n=>n!==cur);if(pr&&pr.allowed)L=L.filter(n=>pr.allowed.some(a=>a.toLowerCase()===n.toLowerCase()));return L}
 function shelfRecip(){const L=audList();return L.every(n=>!shelfExcl.has(n))?null:L.filter(n=>!shelfExcl.has(n))}
-function renderAud(){const A=$('aud');if(!$('dest').value){A.innerHTML='<span>Shelf drops are visible to every device on this login.</span>';return}
+function renderAud(){const A=$('aud');if(!$('dest').value){A.innerHTML='<span>Shelf drops are visible to every user on this board.</span>';return}
   const L=audList();if(!L.length){A.innerHTML='';return}
   A.innerHTML='<span>Who sees it:</span>'+L.map(n=>`<button type="button" class="au2" data-au="${esc(n)}" aria-pressed="${!shelfExcl.has(n)}">${esc(n)}</button>`).join('')+`<b style="color:var(--ink)">${shelfRecip()?'🔒 Private':'🌐 Whole board'}</b>`}
 $('aud').onclick=e=>{const b=e.target.closest('[data-au]');if(!b)return;const n=b.dataset.au;shelfExcl.has(n)?shelfExcl.delete(n):shelfExcl.add(n);renderAud()};
