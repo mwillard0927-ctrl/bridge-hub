@@ -223,7 +223,7 @@ const joinUrl=c=>location.origin+'/#join='+c;
 function qrSvg(t,cell){const q=window._qr(0,'M');q.addData(t);q.make();return q.createSvgTag({cellSize:cell,margin:2,scalable:true})}
 function showQr(){const b=$('qrMini');if(!b)return;const me=cur?meDev():{};const openOwn=invCache.filter(i=>i.made_by===me.id&&!invLine(i).dead);
   if(LS(IKEY())&&!canRun()&&!openOwn.some(i=>i.code===LS(IKEY())))LS(IKEY(),null);
-  const ok=user&&cur&&window._qr&&(canRun()||giveable().n>0||openOwn.length>0);if(!ok)$('qrBig').hidden=true;b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
+  const ok=user&&cur&&window._qr&&(canRun()||giveable().n>0);if(!ok)$('qrBig').hidden=true;b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
 const fmt=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
 function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<new Date())||(i.max_uses&&(i.uses>=i.max_uses||(!i.pool_code&&i.pool_used>=i.max_uses)));
   const why=!i.active?'turned off':dead?(i.max_uses&&i.uses>=i.max_uses?'used up':'expired'):(i.expires_at?'until '+fmt(i.expires_at):'no end date');
