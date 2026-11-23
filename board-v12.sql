@@ -283,3 +283,22 @@ begin
     perform hub_block_branch(d.id);
   end loop;
 end $$;
+-- Part 7: give back unused invites
+create or replace function public.hub_return_invites(p_token text, p_n int) returns void
+language plpgsql security definer set search_path = public as $$
+declare m hub_devices; up hub_devices;
+begin
+  m := hub_me(p_token);
+  if m.id is null or m.is_manager then raise exception 'Not allowed'; end if;
+  if coalesce(p_n,0) < 1 then raise exception 'Pick how many to give back'; end if;
+  if m.stream_code is not null and m.stream_cap - m.stream_used >= p_n then
+    update hub_devices set stream_cap = stream_cap - p_n where id = m.id;
+  elsif m.allowance >= p_n then
+    update hub_devices set allowance = allowance - p_n where id = m.id;
+    select * into up from hub_devices where id = m.invited_by;
+    if up.id is not null and not up.is_manager and not up.blocked then
+      update hub_devices set allowance = allowance + p_n where id = up.id;
+    end if;
+  else raise exception 'You don''t have that many to give back'; end if;
+end $$;
+grant execute on function public.hub_return_invites(text,int) to authenticated;

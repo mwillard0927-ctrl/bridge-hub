@@ -162,7 +162,7 @@ body.hasqr .hdr{padding-right:58px}
 <details class="qrmore"><summary>Invites</summary>
 <div class="qrrow">Works for <select id="qrDays"><option value="0">no limit</option><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option></select>
  · <select id="qrMax"><option value="0">any number</option><option value="1">1 person</option><option value="5">5 people</option><option value="20">20 people</option></select></div>
-<div class="qrrow">People who scan it: <select id="qrPass"><option value="0">just join</option></select></div><p class="qrs" id="qrLeft" style="text-align:left"></p><button id="qrNew">Make new invite QR</button><div id="qrList"></div><div id="qrPeople" style="margin-top:10px"></div></details></div></div>
+<div class="qrrow">People who scan it: <select id="qrPass"><option value="0">just join</option></select></div><p class="qrs" id="qrLeft" style="text-align:left"></p><div class="qrrow" id="qrRet" hidden>Give back <select id="qrRetN"></select> <button id="qrRetGo">Return to pool</button></div><button id="qrNew">Make new invite QR</button><div id="qrList"></div><div id="qrPeople" style="margin-top:10px"></div></details></div></div>
 
 <script type="module">
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
@@ -246,7 +246,8 @@ function fitMax(){const sel=$('qrMax'),g=giveable();
   if(g.kind==='mgr'){if(!sel.querySelector('[value="0"]'))sel.innerHTML='<option value="0">any number</option><option value="1">1 person</option><option value="2">2 people</option><option value="3">3 people</option><option value="5">5 people</option><option value="10">10 people</option><option value="20">20 people</option>';$('qrLeft').textContent=''}
   else{const n=Math.min(g.n,50);sel.innerHTML=n?Array.from({length:n},(_,k)=>`<option value="${k+1}">${k+1} ${k?'people':'person'}</option>`).join(''):'<option value="0">none left</option>';
     $('qrLeft').textContent=g.kind==='stream'?'You can pass on '+g.n+' more spot'+(g.n===1?'':'s')+' from the invite you joined with. They come out of the same shared pool.':'You can invite '+g.n+' more.';$('qrNew').disabled=!n}
-  sel.onchange=fitPass;fitPass()}
+  sel.onchange=fitPass;fitPass();
+  const back=g.kind==='mgr'?0:g.n;$('qrRet').hidden=!back;if(back)$('qrRetN').innerHTML=Array.from({length:Math.min(back,50)},(_,k)=>`<option value="${k+1}">${k+1}</option>`).join('')}
 function renderPeople(){const me=meDev();const below=devices.filter(d=>!d.is_manager&&d.id!==me.id&&(canRun()||isAbove(me.id,d.id)));
   $('qrPeople').innerHTML=below.length?'<b>People below you</b>'+below.map(d=>`<div class="qrinv${d.blocked?' off':''}"><span>${esc(d.name)}${d.blocked?' · blocked':d.needs_review?' · ⚠ needs review':''}<br>Can invite ${d.allowance||0}</span>${d.blocked?'':`<span><button data-give="${d.id}">+1</button>${canRun()?`<button data-take="${d.id}">−1</button>`:''}<button data-blk="${d.id}" style="color:#b91c1c">Block</button></span>`}</div>`).join(''):'';
   $('qrPeople').querySelectorAll('[data-give],[data-take]').forEach(x=>x.onclick=async()=>{const {error}=await sb.rpc('hub_give_allowance',{p_token:tok,p_id:x.dataset.give||x.dataset.take,p_n:x.dataset.give?1:-1});if(error)return toast(error.message);await loadDevices();openQr()});
@@ -259,6 +260,8 @@ async function openQr(){fitMax();$('qrName').textContent=uname(user);$('qrBig').
   else{$('qrSvg').innerHTML='';$('qrInfo').textContent='No active invite. Make a new one below.';$('qrBig').querySelector('details').open=true}
   showQr()}
 $('qrMini').onclick=openQr;
+$('qrRetGo').onclick=async()=>{const n=+$('qrRetN').value,g=giveable();if(!confirm('Give back '+n+' invite'+(n>1?'s':'')+'? '+(g.kind==='stream'?'They go back to the shared pool for others to use.':'They go back to the person who invited you.')+' You can\'t undo this yourself.'))return;
+  const {error}=await sb.rpc('hub_return_invites',{p_token:tok,p_n:n});if(error)return toast(error.message);toast('Gave back '+n);await loadDevices();openQr()};
 $('qrBig').onclick=e=>{if(e.target.id==='qrBig')$('qrBig').hidden=true};
 $('qrNew').onclick=async()=>{if(await makeInvite())openQr()};
 async function autoJoin(){const m=location.hash.match(/^#join=([A-Za-z0-9]+)$/);if(!m)return;history.replaceState(null,'',location.pathname);
