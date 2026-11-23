@@ -89,6 +89,14 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 .tabs2{display:flex;gap:8px}.tabs2 button{flex:1;border-radius:999px;font:800 18px var(--disp)}
 .tabs2 button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .bdn{display:inline-block;min-width:22px;padding:0 6px;border-radius:999px;background:#e11d48;color:#fff;font:700 13px/22px var(--body);text-align:center}
+.qrmini{position:fixed;top:10px;right:10px;width:44px;height:44px;padding:3px;border:1px solid #ccc;border-radius:8px;background:#fff;z-index:50;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:transform .25s}
+.qrmini svg{width:100%;height:100%;display:block}
+.qrbig{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;animation:qf .25s}
+.qrbig[hidden]{display:none}
+.qrcard{background:#fff;color:#111;border-radius:16px;padding:18px;text-align:center;width:min(86vw,360px);animation:qz .3s cubic-bezier(.2,.8,.3,1.2)}
+.qrcard svg{width:100%;height:auto;display:block}
+.qrt{margin:10px 0 2px;font-size:18px}.qrs{margin:0 0 10px;font-size:13px;color:#555}
+@keyframes qz{from{transform:translate(40vw,-40vh) scale(.12)}to{transform:none}}@keyframes qf{from{background:rgba(0,0,0,0)}}
 </style>
 </head>
 <body>
@@ -145,6 +153,8 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 </div>
 </div>
 <div class="toast" id="toast" role="status"></div>
+<button id="qrMini" class="qrmini" hidden aria-label="Show board join QR"></button>
+<div id="qrBig" class="qrbig" hidden><div class="qrcard"><div id="qrSvg"></div><p class="qrt">Scan to join <b id="qrName"></b></p><p class="qrs">Anyone who scans this gets into this board.</p><button id="qrNew">Change saved password</button></div></div>
 
 <script type="module">
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
@@ -180,6 +190,21 @@ $('aGo').onclick=async()=>{
   $('p').value=$('p2').value='';
 };
 $('out').onclick=async()=>{await sb.auth.signOut()};
+/* ---------- join QR ---------- */
+import('https://esm.sh/qrcode-generator@1.4.4').then(m=>{window._qr=m.default||m;showQr()});
+const PKEY=()=>'hub-joinpw-'+user.id;
+function joinUrl(){const p=LS(PKEY());if(!p)return null;return location.origin+'/#join='+btoa(unescape(encodeURIComponent(uname(user)+':'+p)))}
+function qrSvg(t,cell){const q=window._qr(0,'M');q.addData(t);q.make();return q.createSvgTag({cellSize:cell,margin:2,scalable:true})}
+function showQr(){const b=$('qrMini');if(!b)return;const ok=user&&cur&&isMgr&&mgrMode&&window._qr;b.hidden=!ok;if(!ok)return;const u=joinUrl();b.innerHTML=u?qrSvg(u,2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
+async function askPw(){const p=prompt('Type this board\'s password once to make the join QR (saved on this phone only):');if(!p)return false;
+  const {error}=await sb.auth.signInWithPassword({email:uname(user)+DOMAIN,password:p});if(error){toast('That password is wrong');return false}LS(PKEY(),p);showQr();return true}
+$('qrMini').onclick=async()=>{if(!LS(PKEY())&&!await askPw())return;$('qrSvg').innerHTML=qrSvg(joinUrl(),8);$('qrName').textContent=uname(user);$('qrBig').hidden=false};
+$('qrBig').onclick=e=>{if(e.target.id==='qrBig')$('qrBig').hidden=true};
+$('qrNew').onclick=async()=>{LS(PKEY(),null);if(await askPw())$('qrSvg').innerHTML=qrSvg(joinUrl(),8);else{$('qrBig').hidden=true;showQr()}};
+async function autoJoin(){const m=location.hash.match(/^#join=(.+)$/);if(!m)return;history.replaceState(null,'',location.pathname);
+  let u,p;try{[u,...p]=decodeURIComponent(escape(atob(m[1]))).split(':');p=p.join(':')}catch(_){return}
+  if(user&&uname(user)===u)return toast('You\'re already in '+u);if(user)await sb.auth.signOut();
+  $('u').value=u;$('p').value=p;setMode('in');$('aGo').click()}
 const uname=u=>u?.user_metadata?.username||(u?.email||'').replace(DOMAIN,'');
 
 /* ---------- devices (locked) ---------- */
@@ -195,7 +220,7 @@ async function loadDevices(){
   renderDevices()}
 function renderDevices(){
   const locked=!!cur;$('lock').hidden=locked;$('main').hidden=!locked;$('devbar').hidden=!locked;$('manage').hidden=!(isMgr&&mgrMode);if(!(isMgr&&mgrMode))$('mgr').hidden=true;
-  if(!locked){renderLock();return}
+  showQr();if(!locked){renderLock();return}
   $('devs').innerHTML=`<span class="dev" style="--c:${color(cur)};background:var(--c);border-color:var(--c);color:#fff">🔒 ${esc(cur)}</span>${isMgr?`<span class="pill m">Manager</span><button id="mgrToggle" role="switch" aria-checked="${mgrMode}" class="sw${mgrMode?' on':''}"><span class="knob"></span><span class="swl">${mgrMode?'ON':'OFF'}</span></button>`:''}${!devices.some(d=>d.is_manager)?'<button class="dev add" id="becomeMgr">Become manager</button>':''}`;
   const mt=$('mgrToggle');if(mt)mt.onclick=()=>{mgrMode=!mgrMode;LS('hub-mgrmode-'+user.id,mgrMode?'on':'off');renderDevices();render();if(board)board.refresh();toast(mgrMode?'Manager mode on':'Manager mode off. You see what every user sees.')};
   const bm=$('becomeMgr');if(bm)bm.onclick=async()=>{if(bm.dataset.sure!=='1'){bm.dataset.sure='1';bm.textContent='Tap again to confirm';return}const {error}=await sb.rpc('hub_become_manager',{p_token:tok});if(error)return toast(error.message);await loadDevices();if(board)board.refresh();toast('You are now the manager')};
@@ -349,8 +374,9 @@ async function enter(){
     render()}).subscribe();
 }
 function leave(){try{$('guide').open=!LS('hub-seen-guide');LS('hub-seen-guide','1')}catch(_){}if(board){board.destroy();board=null}showTab(false);if(chan){sb.removeChannel(chan);chan=null}items=[];devices=[];cur=null;$('app').hidden=true;$('who').hidden=true;$('auth').hidden=false;$('guide').hidden=false;setMode('in')}
-sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;if(user&&user.id!==was)enter();if(!user&&was)leave()});
+sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;if(user&&user.id!==was)enter();if(!user&&was){leave();showQr()}});
 const {data:{session}}=await sb.auth.getSession();user=session?.user||null;user?enter():leave();
+autoJoin();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user)loadDrops().catch(()=>{})});
 setInterval(()=>{if(user)render()},60000);
 </script>
