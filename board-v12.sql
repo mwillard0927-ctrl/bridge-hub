@@ -133,3 +133,55 @@ language sql stable security definer set search_path = public as $$
   select exists (select 1 from hub_devices where user_id = auth.uid() and token_hash = hub_h(p_token) and blocked);
 $$;
 grant execute on function public.hub_am_blocked(text) to authenticated;
+-- Part 4: manager can change any invite's limit
+alter table public.hub_invites add column if not exists reserved int not null default 0;
+
+create or replace function public.hub_set_invite_limit(p_token text, p_code text, p_max int) returns void
+language plpgsql security definer set search_path = public as $$
+declare m hub_devices;
+begin
+  m := hub_me(p_token);
+  if m.id is null or not m.is_manager then raise exception 'Only the manager can change invite limits'; end if;
+  update hub_invites set max_uses = case when p_max > 0 then greatest(p_max, uses) end
+  where code = p_code and user_id = auth.uid();
+end $$;
+grant execute on function public.hub_set_invite_limit(text,text,int) to authenticated;
+
+-- remember how much allowance each invite used, so refunds stay correct after a limit change
+create or replace function public.hub_make_invite(p_token text, p_days int, p_max int) returns public.hub_invites
+language plpgsql security definer set search_path = public as $$
+declare m hub_devices; i hub_invites; c text;
+begin
+  m := hub_me(p_token);
+  if m.id is null then raise exception 'Lock in your name first'; end if;
+  if not m.is_manager then
+    if coalesce(p_max,0) < 1 then raise exception 'Pick how many people this invite is for'; end if;
+    if p_max > m.allowance then raise exception 'You can only invite % more', m.allowance; end if;
+    update hub_devices set allowance = allowance - p_max where id = m.id;
+  end if;
+  c := upper(substr(replace(gen_random_uuid()::text,'-',''),1,10));
+  insert into hub_invites(code,user_id,created_by,made_by,expires_at,max_uses,reserved)
+  values (c, auth.uid(), m.name, m.id,
+    case when p_days > 0 then now() + make_interval(days => p_days) end,
+    case when p_max > 0 then p_max end,
+    case when m.is_manager then 0 else p_max end)
+  returning * into i;
+  return i;
+end $$;
+
+create or replace function public.hub_end_invite(p_token text, p_code text) returns void
+language plpgsql security definer set search_path = public as $$
+declare m hub_devices; i hub_invites; d record;
+begin
+  m := hub_me(p_token);
+  select * into i from hub_invites where code = p_code and user_id = auth.uid();
+  if m.id is null or i.code is null then raise exception 'Not allowed'; end if;
+  if not (m.is_manager or i.made_by = m.id or hub_is_above(m.id, i.made_by)) then raise exception 'Only the manager or someone above this invite can turn it off'; end if;
+  if i.active and i.reserved > 0 then
+    update hub_devices set allowance = allowance + greatest(i.reserved - i.uses, 0) where id = i.made_by;
+  end if;
+  update hub_invites set active = false where code = i.code;
+  for d in select id from hub_devices where invite_code = i.code and not blocked and not is_manager loop
+    perform hub_block_branch(d.id);
+  end loop;
+end $$;
