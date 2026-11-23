@@ -90,6 +90,7 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 .tabs2 button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .bdn{display:inline-block;min-width:22px;padding:0 6px;border-radius:999px;background:#e11d48;color:#fff;font:700 13px/22px var(--body);text-align:center}
 .qrmini{position:fixed;top:10px;right:10px;width:44px;height:44px;padding:3px;border:1px solid #ccc;border-radius:8px;background:#fff;z-index:50;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:transform .25s}
+body.hasqr .hdr{padding-right:58px}
 .qrmini svg{width:100%;height:100%;display:block}
 .qrbig{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:60;animation:qf .25s}
 .qrbig[hidden]{display:none}
@@ -202,7 +203,7 @@ import('https://esm.sh/qrcode-generator@1.4.4').then(m=>{window._qr=m.default||m
 const IKEY=()=>'hub-invite-'+user.id;
 const joinUrl=c=>location.origin+'/#join='+c;
 function qrSvg(t,cell){const q=window._qr(0,'M');q.addData(t);q.make();return q.createSvgTag({cellSize:cell,margin:2,scalable:true})}
-function showQr(){const b=$('qrMini');if(!b)return;const ok=user&&cur&&isMgr&&mgrMode&&window._qr;b.hidden=!ok;if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
+function showQr(){const b=$('qrMini');if(!b)return;const ok=user&&cur&&isMgr&&mgrMode&&window._qr;b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
 const fmt=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
 function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<new Date())||(i.max_uses&&i.uses>=i.max_uses);
   const why=!i.active?'turned off':dead?(i.max_uses&&i.uses>=i.max_uses?'used up':'expired'):(i.expires_at?'until '+fmt(i.expires_at):'no end date');

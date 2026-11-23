@@ -37,3 +37,4 @@ begin
   update hub_invites set active = false where code = p_code and user_id = auth.uid();
 end $$;
 grant execute on function public.hub_end_invite(text,text) to authenticated;
+grant select on public.hub_invites to authenticated;
