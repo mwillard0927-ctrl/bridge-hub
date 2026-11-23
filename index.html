@@ -198,6 +198,16 @@ $('aGo').onclick=async()=>{
   $('p').value=$('p2').value='';
 };
 $('out').onclick=async()=>{await sb.auth.signOut()};
+/* ---------- invite gate: joined by a turned-off QR = blocked ---------- */
+const VIA=()=>{try{return localStorage.getItem('hub-via-invite')}catch(_){return null}};
+async function inviteGate(){const c=VIA();if(!c||!user)return;
+  if(tok)await sb.rpc('hub_tag_invite',{p_token:tok,p_code:c});
+  const {data:ok,error}=await sb.rpc('hub_invite_ok',{p_code:c});if(error||ok!==false)return;
+  try{localStorage.removeItem('hub-via-invite');localStorage.setItem('hub-blocked',uname(user));localStorage.removeItem(LKEY())}catch(_){}
+  cur=null;tok=null;await sb.auth.signOut();note('aSt','Your access to this board was turned off by a manager.',true);throw new Error('blocked')}
+setInterval(()=>{if(user&&VIA())inviteGate().catch(()=>{})},60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user&&VIA())inviteGate().catch(()=>{})});
+
 /* ---------- join QR (revocable invites) ---------- */
 import('https://esm.sh/qrcode-generator@1.4.4').then(m=>{window._qr=m.default||m;showQr()});
 const IKEY=()=>'hub-invite-'+user.id;
@@ -210,8 +220,8 @@ function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<
   return {dead,txt:`${i.uses}${i.max_uses?'/'+i.max_uses:''} joined · ${why}`}}
 async function loadInvites(){const {data,error}=await sb.from('hub_invites').select('*').order('created_at',{ascending:false});
   if(error){$('qrList').innerHTML='<p class="qrs">Run the v11 SQL first.</p>';return[]}
-  $('qrList').innerHTML=data.map(i=>{const l=invLine(i);return`<div class="qrinv${l.dead?' off':''}"><span><b>${esc(i.code)}</b><br>${l.txt} · by ${esc(i.created_by||'')}</span>${l.dead?'':`<button data-end="${esc(i.code)}">Turn off</button>`}</div>`}).join('')||'<p class="qrs">No invites yet.</p>';
-  $('qrList').querySelectorAll('[data-end]').forEach(x=>x.onclick=async()=>{if(!confirm('Turn off invite '+x.dataset.end+'? That QR stops working right away.'))return;
+  $('qrList').innerHTML=data.map(i=>{const l=invLine(i);return`<div class="qrinv${l.dead?' off':''}"><span><b>${esc(i.code)}</b><br>${l.txt} · by ${esc(i.created_by||'')}${(()=>{const w=devices.filter(d=>d.invite_code===i.code).map(d=>d.name);return w.length?'<br>Joined: '+w.map(esc).join(', '):''})()}</span>${l.dead?'':`<button data-end="${esc(i.code)}">Turn off</button>`}</div>`}).join('')||'<p class="qrs">No invites yet.</p>';
+  $('qrList').querySelectorAll('[data-end]').forEach(x=>x.onclick=async()=>{if(!confirm('Turn off invite '+x.dataset.end+'? That QR stops working, and everyone who joined with it is blocked from this board.'))return;
     const {error}=await sb.rpc('hub_end_invite',{p_token:tok,p_code:x.dataset.end});if(error)return toast(error.message);
     if(LS(IKEY())===x.dataset.end)LS(IKEY(),null);toast('Invite turned off');openQr()});
   return data}
@@ -231,7 +241,7 @@ async function autoJoin(){const m=location.hash.match(/^#join=([A-Za-z0-9]+)$/);
   const r=await fetch(SURL+'/functions/v1/hub-join',{method:'POST',headers:{'Content-Type':'application/json',apikey:SKEY},body:JSON.stringify({code:m[1]})});
   const j=await r.json().catch(()=>({error:'Could not reach the server'}));if(j.error)return note('aSt',j.error,true),toast(j.error);
   if(user&&uname(user)===j.board)return toast('You\'re already in '+j.board);if(user)await sb.auth.signOut();
-  const {error}=await sb.auth.verifyOtp({token_hash:j.token_hash,type:'magiclink'});if(error)return toast(error.message);toast('Welcome to '+j.board+'. Pick your name.')}
+  const {error}=await sb.auth.verifyOtp({token_hash:j.token_hash,type:'magiclink'});if(error)return toast(error.message);try{localStorage.setItem('hub-via-invite',m[1].toUpperCase())}catch(_){}toast('Welcome to '+j.board+'. Pick your name.')}
 const uname=u=>u?.user_metadata?.username||(u?.email||'').replace(DOMAIN,'');
 
 /* ---------- devices (locked) ---------- */
@@ -239,12 +249,12 @@ let mgrMode=true,isMgr=false,tok=null,lk={step:1,name:'',rec:false};
 const LKEY=()=>'hub-lock-'+user.id;
 const rnd=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join('');
 async function loadDevices(){
-  const {data,error}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager').order('created_at');if(error)throw error;devices=data;
+  const {data,error}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code').order('created_at');if(error)throw error;devices=data;
   let saved=null;try{saved=JSON.parse(LS(LKEY())||'null')}catch(_){}
   cur=null;isMgr=false;tok=null;
   try{mgrMode=LS('hub-mgrmode-'+user.id)!=='off'}catch(_){}
   if(saved&&saved.token){const {data:me}=await sb.rpc('hub_me',{p_token:saved.token});if(me&&me.id){cur=me.name;isMgr=!!me.is_manager;tok=saved.token}else LS(LKEY(),null)}
-  renderDevices()}
+  await inviteGate();renderDevices()}
 function renderDevices(){
   const locked=!!cur;$('lock').hidden=locked;$('main').hidden=!locked;$('devbar').hidden=!locked;$('manage').hidden=!(isMgr&&mgrMode);if(!(isMgr&&mgrMode))$('mgr').hidden=true;
   showQr();if(!locked){renderLock();return}
