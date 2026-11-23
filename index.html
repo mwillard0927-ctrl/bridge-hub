@@ -97,6 +97,9 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 .qrcard svg{width:100%;height:auto;display:block}
 .qrt{margin:10px 0 2px;font-size:18px}.qrs{margin:0 0 10px;font-size:13px;color:#555}
 @keyframes qz{from{transform:translate(40vw,-40vh) scale(.12)}to{transform:none}}@keyframes qf{from{background:rgba(0,0,0,0)}}
+.qrmore{text-align:left;margin-top:8px;font-size:14px}.qrmore summary{cursor:pointer;font-weight:700}
+.qrrow{margin:8px 0}.qrrow select{font-size:14px}.qrinv{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 0;border-top:1px solid #eee;font-size:13px}
+.qrinv.off{opacity:.45}
 </style>
 </head>
 <body>
@@ -154,7 +157,11 @@ label.file input{position:absolute;opacity:0;width:1px;height:1px}
 </div>
 <div class="toast" id="toast" role="status"></div>
 <button id="qrMini" class="qrmini" hidden aria-label="Show board join QR"></button>
-<div id="qrBig" class="qrbig" hidden><div class="qrcard"><div id="qrSvg"></div><p class="qrt">Scan to join <b id="qrName"></b></p><p class="qrs">Anyone who scans this gets into this board.</p><button id="qrNew">Change saved password</button></div></div>
+<div id="qrBig" class="qrbig" hidden><div class="qrcard"><div id="qrSvg"></div><p class="qrt">Scan to join <b id="qrName"></b></p><p class="qrs" id="qrInfo"></p>
+<details class="qrmore"><summary>Invites</summary>
+<div class="qrrow">Works for <select id="qrDays"><option value="0">no limit</option><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option></select>
+ · <select id="qrMax"><option value="0">any number</option><option value="1">1 person</option><option value="5">5 people</option><option value="20">20 people</option></select></div>
+<button id="qrNew">Make new invite QR</button><div id="qrList"></div></details></div></div>
 
 <script type="module">
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
@@ -190,21 +197,40 @@ $('aGo').onclick=async()=>{
   $('p').value=$('p2').value='';
 };
 $('out').onclick=async()=>{await sb.auth.signOut()};
-/* ---------- join QR ---------- */
+/* ---------- join QR (revocable invites) ---------- */
 import('https://esm.sh/qrcode-generator@1.4.4').then(m=>{window._qr=m.default||m;showQr()});
-const PKEY=()=>'hub-joinpw-'+user.id;
-function joinUrl(){const p=LS(PKEY());if(!p)return null;return location.origin+'/#join='+btoa(unescape(encodeURIComponent(uname(user)+':'+p)))}
+const IKEY=()=>'hub-invite-'+user.id;
+const joinUrl=c=>location.origin+'/#join='+c;
 function qrSvg(t,cell){const q=window._qr(0,'M');q.addData(t);q.make();return q.createSvgTag({cellSize:cell,margin:2,scalable:true})}
-function showQr(){const b=$('qrMini');if(!b)return;const ok=user&&cur&&isMgr&&mgrMode&&window._qr;b.hidden=!ok;if(!ok)return;const u=joinUrl();b.innerHTML=u?qrSvg(u,2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
-async function askPw(){const p=prompt('Type this board\'s password once to make the join QR (saved on this phone only):');if(!p)return false;
-  const {error}=await sb.auth.signInWithPassword({email:uname(user)+DOMAIN,password:p});if(error){toast('That password is wrong');return false}LS(PKEY(),p);showQr();return true}
-$('qrMini').onclick=async()=>{if(!LS(PKEY())&&!await askPw())return;$('qrSvg').innerHTML=qrSvg(joinUrl(),8);$('qrName').textContent=uname(user);$('qrBig').hidden=false};
+function showQr(){const b=$('qrMini');if(!b)return;const ok=user&&cur&&isMgr&&mgrMode&&window._qr;b.hidden=!ok;if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
+const fmt=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<new Date())||(i.max_uses&&i.uses>=i.max_uses);
+  const why=!i.active?'turned off':dead?(i.max_uses&&i.uses>=i.max_uses?'used up':'expired'):(i.expires_at?'until '+fmt(i.expires_at):'no end date');
+  return {dead,txt:`${i.uses}${i.max_uses?'/'+i.max_uses:''} joined · ${why}`}}
+async function loadInvites(){const {data,error}=await sb.from('hub_invites').select('*').order('created_at',{ascending:false});
+  if(error){$('qrList').innerHTML='<p class="qrs">Run the v11 SQL first.</p>';return[]}
+  $('qrList').innerHTML=data.map(i=>{const l=invLine(i);return`<div class="qrinv${l.dead?' off':''}"><span><b>${esc(i.code)}</b><br>${l.txt} · by ${esc(i.created_by||'')}</span>${l.dead?'':`<button data-end="${esc(i.code)}">Turn off</button>`}</div>`}).join('')||'<p class="qrs">No invites yet.</p>';
+  $('qrList').querySelectorAll('[data-end]').forEach(x=>x.onclick=async()=>{if(!confirm('Turn off invite '+x.dataset.end+'? That QR stops working right away.'))return;
+    const {error}=await sb.rpc('hub_end_invite',{p_token:tok,p_code:x.dataset.end});if(error)return toast(error.message);
+    if(LS(IKEY())===x.dataset.end)LS(IKEY(),null);toast('Invite turned off');openQr()});
+  return data}
+async function makeInvite(){const {data,error}=await sb.rpc('hub_make_invite',{p_token:tok,p_days:+$('qrDays').value,p_max:+$('qrMax').value});
+  if(error){toast(/hub_make_invite/.test(error.message)?'Run the v11 SQL first':error.message);return null}LS(IKEY(),data.code);showQr();return data.code}
+async function openQr(){$('qrName').textContent=uname(user);$('qrBig').hidden=false;const list=await loadInvites();
+  let c=LS(IKEY());const i=list.find(x=>x.code===c);if(!i||invLine(i).dead){LS(IKEY(),null);c=null}
+  if(!c&&!list.length)c=await makeInvite();
+  if(c){$('qrSvg').innerHTML=qrSvg(joinUrl(c),8);const l=invLine(list.find(x=>x.code===c)||{active:true,uses:0});$('qrInfo').textContent='Code '+c+' · '+l.txt}
+  else{$('qrSvg').innerHTML='';$('qrInfo').textContent='No active invite. Make a new one below.';$('qrBig').querySelector('details').open=true}
+  showQr()}
+$('qrMini').onclick=openQr;
 $('qrBig').onclick=e=>{if(e.target.id==='qrBig')$('qrBig').hidden=true};
-$('qrNew').onclick=async()=>{LS(PKEY(),null);if(await askPw())$('qrSvg').innerHTML=qrSvg(joinUrl(),8);else{$('qrBig').hidden=true;showQr()}};
-async function autoJoin(){const m=location.hash.match(/^#join=(.+)$/);if(!m)return;history.replaceState(null,'',location.pathname);
-  let u,p;try{[u,...p]=decodeURIComponent(escape(atob(m[1]))).split(':');p=p.join(':')}catch(_){return}
-  if(user&&uname(user)===u)return toast('You\'re already in '+u);if(user)await sb.auth.signOut();
-  $('u').value=u;$('p').value=p;setMode('in');$('aGo').click()}
+$('qrNew').onclick=async()=>{if(await makeInvite())openQr()};
+async function autoJoin(){const m=location.hash.match(/^#join=([A-Za-z0-9]+)$/);if(!m)return;history.replaceState(null,'',location.pathname);
+  toast('Joining board…');
+  const r=await fetch(SURL+'/functions/v1/hub-join',{method:'POST',headers:{'Content-Type':'application/json',apikey:SKEY},body:JSON.stringify({code:m[1]})});
+  const j=await r.json().catch(()=>({error:'Could not reach the server'}));if(j.error)return note('aSt',j.error,true),toast(j.error);
+  if(user&&uname(user)===j.board)return toast('You\'re already in '+j.board);if(user)await sb.auth.signOut();
+  const {error}=await sb.auth.verifyOtp({token_hash:j.token_hash,type:'magiclink'});if(error)return toast(error.message);toast('Welcome to '+j.board+'. Pick your name.')}
 const uname=u=>u?.user_metadata?.username||(u?.email||'').replace(DOMAIN,'');
 
 /* ---------- devices (locked) ---------- */
