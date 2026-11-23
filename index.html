@@ -138,8 +138,8 @@ body.hasqr .hdr{padding-right:58px}
 <div class="seg" id="devbar" hidden><span>You are:</span><span id="devs" class="seg"></span><button class="dev add" id="manage" hidden>Manage users</button></div>
 <section class="card mgr" id="mgr" hidden><b>Users on this board <small style="font-weight:500;color:var(--mute)">(a user is any phone or device labeled with that person's name)</small></b><p class="note" style="margin:0">Only the manager can add, remove, unlock or hand off users.</p><div id="mlist" class="mgr"></div><div class="row"><input type="text" id="mNew" placeholder="Add a user, e.g. Grandma" maxlength="40" style="flex:1 1 200px"><button class="go" id="mAdd" style="flex:0 0 auto">Add user</button></div><p class="note" style="margin:0">New users show as Open until that person picks their name on their phone and locks it in.</p></section>
 <div id="main" hidden style="display:grid;gap:16px">
-<nav class="tabs2"><button id="tabShelf" aria-pressed="true">Shelf</button><button id="tabBoard" aria-pressed="false">Boards <span id="bdN" class="bdn" hidden></span></button></nav>
-<div id="vShelf" style="display:grid;gap:16px">
+<nav class="tabs2"><button id="tabBoard" aria-pressed="true">Boards <span id="bdN" class="bdn" hidden></span></button><button id="tabShelf" aria-pressed="false">Shelf</button></nav>
+<div id="vShelf" style="display:grid;gap:16px" hidden>
 
 <section class="box" id="box" aria-label="Drop box">
 <input type="text" id="title" placeholder="Label (optional)" maxlength="120">
@@ -157,7 +157,7 @@ body.hasqr .hdr{padding-right:58px}
 <p class="note">Drops clear themselves after 7 days. Files up to 10 MB.</p>
 <div class="list" id="list"><div class="empty">Loading…</div></div>
 </div>
-<div id="vBoard" hidden></div>
+<div id="vBoard"></div>
 </div>
 </div>
 </div>
@@ -470,7 +470,7 @@ async function enter(){
     else if(p.eventType==='DELETE')items=items.filter(i=>i.id!==p.old.id);
     render()}).subscribe();
 }
-function leave(){try{$('guide').open=!LS('hub-seen-guide');LS('hub-seen-guide','1')}catch(_){}if(board){board.destroy();board=null}showTab(false);if(chan){sb.removeChannel(chan);chan=null}items=[];devices=[];cur=null;$('app').hidden=true;$('who').hidden=true;$('auth').hidden=false;$('guide').hidden=false;setMode('in')}
+function leave(){try{$('guide').open=!LS('hub-seen-guide');LS('hub-seen-guide','1')}catch(_){}if(board){board.destroy();board=null}showTab(true);if(chan){sb.removeChannel(chan);chan=null}items=[];devices=[];cur=null;$('app').hidden=true;$('who').hidden=true;$('auth').hidden=false;$('guide').hidden=false;setMode('in')}
 sb.auth.onAuthStateChange((_e,s)=>{const was=user?.id;user=s?.user||null;if(user&&user.id!==was)enter();if(!user&&was){leave();showQr()}});
 const {data:{session}}=await sb.auth.getSession();user=session?.user||null;user?enter():leave();
 autoJoin();
