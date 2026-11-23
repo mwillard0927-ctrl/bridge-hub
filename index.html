@@ -212,7 +212,7 @@ async function inviteGate(){if(!user)return;let saved=null;try{saved=JSON.parse(
     cur=null;tok=null;await sb.auth.signOut();note('aSt','Your access to this board was turned off.',true);toast('Your access to this board was turned off.');throw new Error('blocked')}
   const c=VIA();if(c&&tok){await sb.rpc('hub_tag_invite',{p_token:tok,p_code:c});try{localStorage.removeItem('hub-via-invite')}catch(_){}
     const {data}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review,stream_code,stream_cap,stream_used,pool,pool_used').order('created_at');if(data)devices=data}}
-setInterval(()=>{if(user&&cur)inviteGate().catch(()=>{})},60000);
+setInterval(()=>{if(user&&cur){inviteGate().catch(()=>{});sb.rpc('hub_pool_status').then(({data})=>{if(data){live={};data.forEach(r=>live[r.id]=r);showQr()}})}},60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user&&cur)inviteGate().catch(()=>{})});
 const meDev=()=>devices.find(d=>d.name===cur)||{};
 const isAbove=(a,b)=>{let d=devices.find(x=>x.id===b),n=0;while(d&&d.invited_by&&n++<50){if(d.invited_by===a)return true;d=devices.find(x=>x.id===d.invited_by)}return false};
@@ -244,7 +244,9 @@ async function loadInvites(){const {data,error}=await sb.from('hub_invites').sel
 async function makeInvite(){const {data,error}=await sb.rpc('hub_make_invite',{p_token:tok,p_days:+$('qrDays').value,p_max:+$('qrMax').value,p_pass:+$('qrPass').value});
   if(error){toast(/hub_make_invite/.test(error.message)?'Run the v11 SQL first':error.message);return null}LS(IKEY(),data.code);showQr();return data.code}
 let invCache=[];
-const left=d=>Math.max((d.pool||0)-(d.pool_used||0),0);
+let live={};
+const left=d=>Math.max(live[d.id]?.left_now??0,0);
+const given=d=>live[d.id]?.given??(d.pool||0);
 function giveable(){if(canRun())return {n:Infinity,kind:'mgr'};const n=left(meDev());return {n,kind:n?'pool':'none'}}
 const nums=(a,b,lab)=>Array.from({length:Math.max(b-a+1,0)},(_,k)=>`<option value="${a+k}">${lab(a+k)}</option>`).join('');
 function fitPass(){const g=giveable();const top=g.kind==='mgr'?100:Math.max(g.n-1,0);const keep=+$('qrPass').value||0;
@@ -252,25 +254,26 @@ function fitPass(){const g=giveable();const top=g.kind==='mgr'?100:Math.max(g.n-
 function fitMax(){const sel=$('qrMax'),g=giveable(),keep=sel.value;
   if(g.kind==='mgr'){sel.innerHTML='<option value="0">no limit</option>'+nums(1,100,n=>n+(n>1?' people':' person'));$('qrLeft').textContent='';$('qrNew').disabled=false}
   else{const n=Math.min(g.n,100);sel.innerHTML=n?nums(1,n,k=>k+(k>1?' people':' person')):'<option value="0">none left</option>';
-    $('qrLeft').textContent='You have '+g.n+' invite'+(g.n===1?'':'s')+' left. Each person who scans uses 1 plus whatever they can pass on.';$('qrNew').disabled=!n}
+    $('qrLeft').textContent='Given '+given(meDev())+' · '+g.n+' left right now. Spots are shared with everyone above you, so this can drop if they get used first.';$('qrNew').disabled=!n}
   if([...sel.options].some(o=>o.value===keep))sel.value=keep;
   fitPass();
   const back=g.kind==='mgr'?0:g.n;$('qrRet').hidden=!back;if(back)$('qrRetN').innerHTML=nums(1,Math.min(back,100),String);
   renderSeed()}
 let seed=null;
-async function loadSeed(){if(!canRun())return;const {data}=await sb.from('hub_seed').select('*').maybeSingle();seed=data||{total:null,used:0};renderSeed()}
+async function loadSeed(){if(!canRun())return;const {data}=await sb.rpc('hub_seed_status');seed=(data&&data[0])||{total:null,used:0};renderSeed()}
 function renderSeed(){const el=$('qrSeed');if(!canRun()||!seed){el.hidden=true;return}el.hidden=false;
-  const tot=seed.total,used=seed.used||0,ds=devices.filter(d=>!d.is_manager&&!d.blocked),given=ds.reduce((a,d)=>a+(d.pool||0),0),spent=ds.reduce((a,d)=>a+(d.pool_used||0),0);
+  const tot=seed.total,used=seed.used||0,ds=devices.filter(d=>!d.is_manager&&!d.blocked);
   const direct=invCache.filter(i=>{const m=devices.find(d=>d.id===i.made_by);return !i.made_by||m?.is_manager}).reduce((a,i)=>a+i.uses,0);
+  const holders=ds.filter(d=>given(d)>0).length,open=ds.reduce((a,d)=>a+left(d),0);
   const pct=tot?Math.min(100,Math.round(used/tot*100)):0;
   el.innerHTML=`<b>Seed pool</b> <select id="seedTot"><option value="0">no limit</option>${nums(1,100,String)}${tot>100?`<option value="${tot}">${tot}</option>`:''}</select>
   <div class="sbar"><i style="width:${tot?pct:0}%"></i></div>
-  <div class="sgrid"><span><b>${used}</b>used</span><span><b>${tot==null?'∞':Math.max(tot-used,0)}</b>left</span><span><b>${direct}</b>joined from your QRs</span><span><b>${given}</b>handed down</span><span><b>${spent}</b>used downstream</span><span><b>${Math.max(given-spent,0)}</b>still open downstream</span></div>`;
+  <div class="sgrid"><span><b>${used}</b>joined</span><span><b>${tot==null?'∞':Math.max(tot-used,0)}</b>left</span><span><b>${direct}</b>from your QRs</span><span><b>${Math.max(used-direct,0)}</b>from downstream QRs</span><span><b>${holders}</b>people who can invite</span><span><b>${open}</b>they could still bring in*</span></div><p class="qrs" style="margin:6px 0 0">*Shared, first come first served. Their counts drop when spots are used anywhere above them.</p>`;
   $('seedTot').value=tot==null?'0':String(tot);
   $('seedTot').onchange=async e=>{const v=+e.target.value;if(v&&v<used&&!confirm(v+' is less than the '+used+' already used. No new joins until you raise it. OK?'))return renderSeed();
     const {error}=await sb.rpc('hub_set_seed',{p_token:tok,p_total:v});if(error)return toast(error.message);seed.total=v||null;toast('Seed pool set to '+(v||'no limit'));renderSeed()}}
 function renderPeople(){const me=meDev();const below=devices.filter(d=>!d.is_manager&&d.id!==me.id&&(canRun()||isAbove(me.id,d.id)));
-  $('qrPeople').innerHTML=below.length?'<b>People below you</b>'+below.map(d=>`<div class="qrinv${d.blocked?' off':''}"><span>${esc(d.name)}${d.blocked?' · blocked':d.needs_review?' · ⚠ needs review':''}<br>${left(d)} left of ${d.pool||0}</span>${d.blocked?'':`<span><select data-amt="${d.id}">${nums(1,canRun()?100:Math.min(giveable().n,100),String)}</select><button data-give="${d.id}">Give</button>${canRun()?`<button data-take="${d.id}">Take</button>`:''}<button data-blk="${d.id}" style="color:#b91c1c">Block</button></span>`}</div>`).join(''):'';
+  $('qrPeople').innerHTML=below.length?'<b>People below you</b>'+below.map(d=>`<div class="qrinv${d.blocked?' off':''}"><span>${esc(d.name)}${d.blocked?' · blocked':d.needs_review?' · ⚠ needs review':''}<br>Given ${given(d)} · ${left(d)} left</span>${d.blocked?'':`<span><select data-amt="${d.id}">${nums(1,canRun()?100:Math.min(giveable().n,100),String)}</select><button data-give="${d.id}">Give</button>${canRun()?`<button data-take="${d.id}">Take</button>`:''}<button data-blk="${d.id}" style="color:#b91c1c">Block</button></span>`}</div>`).join(''):'';
   $('qrPeople').querySelectorAll('[data-give],[data-take]').forEach(x=>x.onclick=async()=>{const {error}=await sb.rpc('hub_give_allowance',{p_token:tok,p_id:x.dataset.give||x.dataset.take,p_n:(x.dataset.give?1:-1)*(+$('qrPeople').querySelector(`[data-amt="${x.dataset.give||x.dataset.take}"]`).value||1)});if(error)return toast(error.message);await loadDevices();openQr()});
   $('qrPeople').querySelectorAll('[data-blk]').forEach(x=>x.onclick=async()=>{const n=devices.find(d=>d.id===x.dataset.blk)?.name;if(!confirm('Block '+n+'? Anyone they brought in goes to the manager to decide.'))return;
     const {error}=await sb.rpc('hub_block_user',{p_token:tok,p_id:x.dataset.blk});if(error)return toast(error.message);toast(n+' blocked');await loadDevices();openQr()})}
@@ -304,7 +307,7 @@ async function loadDevices(){
   if(saved&&saved.token){const {data:bl}=await sb.rpc('hub_am_blocked',{p_token:saved.token});if(bl===true){LS(LKEY(),null);try{localStorage.removeItem('hub-via-invite')}catch(_){}await sb.auth.signOut();toast('Your access to this board was turned off.');throw new Error('Your access to this board was turned off.')}}
   try{mgrMode=LS('hub-mgrmode-'+user.id)!=='off'}catch(_){}
   if(saved&&saved.token){const {data:me,error:meErr}=await sb.rpc('hub_me',{p_token:saved.token});if(me&&me.id){cur=me.name;isMgr=!!me.is_manager;tok=saved.token}else if(meErr){throw new Error('Could not check your name: '+meErr.message)}}
-  await inviteGate();try{const {data:iv}=await sb.from('hub_invites').select('*');if(iv)invCache=iv}catch(_){}renderDevices()}
+  await inviteGate();try{const [{data:iv},{data:ps},{data:ss}]=await Promise.all([sb.from('hub_invites').select('*'),sb.rpc('hub_pool_status'),sb.rpc('hub_seed_status')]);if(iv)invCache=iv;live={};(ps||[]).forEach(r=>live[r.id]=r);if(ss&&ss[0])seed=ss[0]}catch(_){}renderDevices()}
 function renderDevices(){
   {const nr=devices.filter(d=>d.needs_review&&!d.blocked).length,mb=$('manage');mb.textContent=nr&&isMgr&&mgrMode?'Manage users ⚠ '+nr:'Manage users';mb.style.color=nr&&isMgr&&mgrMode?'#e11d48':'';
    if(nr&&isMgr&&mgrMode&&renderDevices.lastNr!==nr){toast('⚠ '+nr+' '+(nr>1?'people need':'person needs')+' your decision in Manage users');}renderDevices.lastNr=nr}
@@ -315,7 +318,7 @@ function renderDevices(){
   const bm=$('becomeMgr');if(bm)bm.onclick=async()=>{if(bm.dataset.sure!=='1'){bm.dataset.sure='1';bm.textContent='Tap again to confirm';return}const {error}=await sb.rpc('hub_become_manager',{p_token:tok});if(error)return toast(error.message);await loadDevices();if(board)board.refresh();toast('You are now the manager')};
   if($('dest').options.length)renderAud();
   const rev=devices.filter(d=>d.needs_review&&!d.blocked);
-  $('mlist').innerHTML=(rev.length?`<div class="card" style="border-color:#e11d48"><b>⚠ Needs your decision</b><p class="note" style="margin:0">Someone above these people was blocked. Keep them or block them (blocking sends anyone they invited here next).</p>${rev.map(d=>`<div class="row" style="justify-content:space-between"><span>${esc(d.name)}<small> · invited by ${esc(devices.find(x=>x.id===d.invited_by)?.name||'?')}</small></span><span class="row"><button data-rev="keep" data-id="${d.id}">Keep</button><button data-rev="block" data-id="${d.id}" style="color:var(--bad)">Block</button></span></div>`).join('')}</div>`:'')+devices.filter(d=>!d.blocked||1).map(d=>`<div class="row" style="justify-content:space-between"><span><span class="dot" style="--c:${color(d.name)}"></span>${esc(d.name)}${d.blocked?'<span class="pill" style="color:var(--bad)">Blocked</span>':d.is_manager?'<span class="pill m">Manager</span>':d.claimed_at?'<span class="pill">🔒 Locked</span>':'<span class="pill">Open</span>'}${!d.is_manager&&!d.blocked?`<small> · ${left(d)} of ${d.pool||0} invites left</small>`:''}${d.invited_by?`<small> · via ${esc(devices.find(x=>x.id===d.invited_by)?.name||'?')}</small>`:''}</span>${d.name!==cur?`<span class="row">${d.claimed_at?`<button data-act="unlock" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Unlock</button>`:''}${d.claimed_at?`<button data-act="make_manager" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Make manager</button>`:''}<button data-act="remove" data-id="${d.id}" style="color:var(--bad);min-height:34px;padding:2px 10px;font-size:13px">Remove</button></span>`:''}</div>`).join('');
+  $('mlist').innerHTML=(rev.length?`<div class="card" style="border-color:#e11d48"><b>⚠ Needs your decision</b><p class="note" style="margin:0">Someone above these people was blocked. Keep them or block them (blocking sends anyone they invited here next).</p>${rev.map(d=>`<div class="row" style="justify-content:space-between"><span>${esc(d.name)}<small> · invited by ${esc(devices.find(x=>x.id===d.invited_by)?.name||'?')}</small></span><span class="row"><button data-rev="keep" data-id="${d.id}">Keep</button><button data-rev="block" data-id="${d.id}" style="color:var(--bad)">Block</button></span></div>`).join('')}</div>`:'')+devices.filter(d=>!d.blocked||1).map(d=>`<div class="row" style="justify-content:space-between"><span><span class="dot" style="--c:${color(d.name)}"></span>${esc(d.name)}${d.blocked?'<span class="pill" style="color:var(--bad)">Blocked</span>':d.is_manager?'<span class="pill m">Manager</span>':d.claimed_at?'<span class="pill">🔒 Locked</span>':'<span class="pill">Open</span>'}${!d.is_manager&&!d.blocked?`<small> · given ${given(d)} · ${left(d)} left</small>`:''}${d.invited_by?`<small> · via ${esc(devices.find(x=>x.id===d.invited_by)?.name||'?')}</small>`:''}</span>${d.name!==cur?`<span class="row">${d.claimed_at?`<button data-act="unlock" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Unlock</button>`:''}${d.claimed_at?`<button data-act="make_manager" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Make manager</button>`:''}<button data-act="remove" data-id="${d.id}" style="color:var(--bad);min-height:34px;padding:2px 10px;font-size:13px">Remove</button></span>`:''}</div>`).join('');
   $('filt').innerHTML=`<button data-f="all" aria-pressed="${filt==='all'}">All</button>`+devices.map(d=>`<button data-f="${esc(d.name)}" aria-pressed="${filt===d.name}">From ${esc(d.name)}</button>`).join('');
   upd();
 }
