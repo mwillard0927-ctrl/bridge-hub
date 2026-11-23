@@ -247,12 +247,15 @@ let invCache=[];
 let live={};
 const left=d=>Math.max(live[d.id]?.left_now??0,0);
 const given=d=>live[d.id]?.given??(d.pool||0);
-function giveable(){if(canRun())return {n:Infinity,kind:'mgr'};const n=left(meDev());return {n,kind:n?'pool':'none'}}
+const seedLeft=()=>!seed||seed.total==null?Infinity:Math.max(seed.total-(seed.used||0),0);
+function giveable(){if(canRun())return {n:seedLeft(),kind:'mgr'};const n=left(meDev());return {n,kind:n?'pool':'none'}}
 const nums=(a,b,lab)=>Array.from({length:Math.max(b-a+1,0)},(_,k)=>`<option value="${a+k}">${lab(a+k)}</option>`).join('');
-function fitPass(){const g=giveable();const top=g.kind==='mgr'?100:Math.max(g.n-1,0);const keep=+$('qrPass').value||0;
+function fitPass(){const g=giveable();const top=Math.max(Math.min(g.n,101)-1,0);const keep=+$('qrPass').value||0;
   $('qrPass').innerHTML='<option value="0">just join</option>'+nums(1,top,n=>'join + can pass on '+n);$('qrPass').value=Math.min(keep,top)}
 function fitMax(){const sel=$('qrMax'),g=giveable(),keep=sel.value;
-  if(g.kind==='mgr'){sel.innerHTML='<option value="0">no limit</option>'+nums(1,100,n=>n+(n>1?' people':' person'));$('qrLeft').textContent='';$('qrNew').disabled=false}
+  if(g.kind==='mgr'){const lim=g.n===Infinity;const n=lim?100:Math.min(g.n,100);
+    sel.innerHTML=(lim?'<option value="0">no limit</option>':'')+(n?nums(1,n,k=>k+(k>1?' people':' person')):'<option value="0">none left</option>');
+    $('qrLeft').textContent=lim?'':n?'Seed pool: '+g.n+' left.':'Seed pool is full. Raise it to invite more.';$('qrNew').disabled=!lim&&!n}
   else{const n=Math.min(g.n,100);sel.innerHTML=n?nums(1,n,k=>k+(k>1?' people':' person')):'<option value="0">none left</option>';
     $('qrLeft').textContent='Given '+given(meDev())+' · '+g.n+' left right now. Spots are shared with everyone above you, so this can drop if they get used first.';$('qrNew').disabled=!n}
   if([...sel.options].some(o=>o.value===keep))sel.value=keep;
@@ -263,21 +266,21 @@ let seed=null;
 async function loadSeed(){if(!canRun())return;const {data}=await sb.rpc('hub_seed_status');seed=(data&&data[0])||{total:null,used:0};renderSeed()}
 function renderSeed(){const el=$('qrSeed');if(!canRun()||!seed){el.hidden=true;return}el.hidden=false;
   const tot=seed.total,used=seed.used||0,ds=devices.filter(d=>!d.is_manager&&!d.blocked);
-  const direct=invCache.filter(i=>{const m=devices.find(d=>d.id===i.made_by);return !i.made_by||m?.is_manager}).reduce((a,i)=>a+i.uses,0);
+  const direct=Math.min(used,devices.filter(d=>d.invite_code&&(!d.invited_by||devices.find(x=>x.id===d.invited_by)?.is_manager)).length);
   const holders=ds.filter(d=>given(d)>0).length,open=ds.reduce((a,d)=>a+left(d),0);
   const pct=tot?Math.min(100,Math.round(used/tot*100)):0;
   el.innerHTML=`<b>Seed pool</b> <select id="seedTot"><option value="0">no limit</option>${nums(1,100,String)}${tot>100?`<option value="${tot}">${tot}</option>`:''}</select>
   <div class="sbar"><i style="width:${tot?pct:0}%"></i></div>
   <div class="sgrid"><span><b>${used}</b>joined</span><span><b>${tot==null?'∞':Math.max(tot-used,0)}</b>left</span><span><b>${direct}</b>from your QRs</span><span><b>${Math.max(used-direct,0)}</b>from downstream QRs</span><span><b>${holders}</b>people who can invite</span><span><b>${open}</b>they could still bring in*</span></div><p class="qrs" style="margin:6px 0 0">*Shared, first come first served. Their counts drop when spots are used anywhere above them.</p>`;
   $('seedTot').value=tot==null?'0':String(tot);
-  $('seedTot').onchange=async e=>{const v=+e.target.value;if(v&&v<used&&!confirm(v+' is less than the '+used+' already used. No new joins until you raise it. OK?'))return renderSeed();
-    const {error}=await sb.rpc('hub_set_seed',{p_token:tok,p_total:v});if(error)return toast(error.message);seed.total=v||null;toast('Seed pool set to '+(v||'no limit'));renderSeed()}}
+  $('seedTot').onchange=async e=>{const v=+e.target.value;if(v&&(seed.total==null||v<seed.total)&&!confirm('Lower the seed pool to '+v+'? Open QRs and people\'s invite caps will be trimmed to fit what\'s left.'))return renderSeed();
+    const {error}=await sb.rpc('hub_set_seed',{p_token:tok,p_total:v});if(error)return toast(error.message);toast('Seed pool set to '+(v||'no limit'));await loadDevices();await loadSeed();openQr()}}
 function renderPeople(){const me=meDev();const below=devices.filter(d=>!d.is_manager&&d.id!==me.id&&(canRun()||isAbove(me.id,d.id)));
   $('qrPeople').innerHTML=below.length?'<b>People below you</b>'+below.map(d=>`<div class="qrinv${d.blocked?' off':''}"><span>${esc(d.name)}${d.blocked?' · blocked':d.needs_review?' · ⚠ needs review':''}<br>Given ${given(d)} · ${left(d)} left</span>${d.blocked?'':`<span><select data-amt="${d.id}">${nums(1,canRun()?100:Math.min(giveable().n,100),String)}</select><button data-give="${d.id}">Give</button>${canRun()?`<button data-take="${d.id}">Take</button>`:''}<button data-blk="${d.id}" style="color:#b91c1c">Block</button></span>`}</div>`).join(''):'';
   $('qrPeople').querySelectorAll('[data-give],[data-take]').forEach(x=>x.onclick=async()=>{const {error}=await sb.rpc('hub_give_allowance',{p_token:tok,p_id:x.dataset.give||x.dataset.take,p_n:(x.dataset.give?1:-1)*(+$('qrPeople').querySelector(`[data-amt="${x.dataset.give||x.dataset.take}"]`).value||1)});if(error)return toast(error.message);await loadDevices();openQr()});
   $('qrPeople').querySelectorAll('[data-blk]').forEach(x=>x.onclick=async()=>{const n=devices.find(d=>d.id===x.dataset.blk)?.name;if(!confirm('Block '+n+'? Anyone they brought in goes to the manager to decide.'))return;
     const {error}=await sb.rpc('hub_block_user',{p_token:tok,p_id:x.dataset.blk});if(error)return toast(error.message);toast(n+' blocked');await loadDevices();openQr()})}
-async function openQr(){fitMax();loadSeed();$('qrName').textContent=uname(user);$('qrBig').hidden=false;const list=await loadInvites();
+async function openQr(){await loadSeed();fitMax();$('qrName').textContent=uname(user);$('qrBig').hidden=false;const list=await loadInvites();
   let c=LS(IKEY());const i=list.find(x=>x.code===c);if(!i||invLine(i).dead){LS(IKEY(),null);c=null}
   if(!c&&!list.length&&canRun())c=await makeInvite();
   if(c){$('qrSvg').innerHTML=qrSvg(joinUrl(c),8);const l=invLine(list.find(x=>x.code===c)||{active:true,uses:0});$('qrInfo').textContent='Code '+c+' · '+l.txt}
