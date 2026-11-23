@@ -221,7 +221,9 @@ import('https://esm.sh/qrcode-generator@1.4.4').then(m=>{window._qr=m.default||m
 const IKEY=()=>'hub-invite-'+user.id;
 const joinUrl=c=>location.origin+'/#join='+c;
 function qrSvg(t,cell){const q=window._qr(0,'M');q.addData(t);q.make();return q.createSvgTag({cellSize:cell,margin:2,scalable:true})}
-function showQr(){const b=$('qrMini');if(!b)return;const me=cur?meDev():{};const ok=user&&cur&&window._qr&&(canRun()||me.allowance>0||(me.stream_cap>(me.stream_used||0))||!!LS(IKEY()));b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
+function showQr(){const b=$('qrMini');if(!b)return;const me=cur?meDev():{};const openOwn=invCache.filter(i=>i.made_by===me.id&&!invLine(i).dead);
+  if(LS(IKEY())&&!canRun()&&!openOwn.some(i=>i.code===LS(IKEY())))LS(IKEY(),null);
+  const ok=user&&cur&&window._qr&&(canRun()||giveable().n>0||openOwn.length>0);if(!ok)$('qrBig').hidden=true;b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
 const fmt=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
 function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<new Date())||(i.max_uses&&(i.uses>=i.max_uses||(!i.pool_code&&i.pool_used>=i.max_uses)));
   const why=!i.active?'turned off':dead?(i.max_uses&&i.uses>=i.max_uses?'used up':'expired'):(i.expires_at?'until '+fmt(i.expires_at):'no end date');
@@ -234,7 +236,7 @@ async function loadInvites(){const {data,error}=await sb.from('hub_invites').sel
     const {error}=await sb.rpc('hub_set_invite_limit',{p_token:tok,p_code:x.dataset.lim,p_max:n});if(error)return toast(error.message);toast('Limit updated. Same QR, new limit.');openQr()});
   $('qrList').querySelectorAll('[data-end]').forEach(x=>x.onclick=async()=>{if(!confirm('Turn off invite '+x.dataset.end+'? That QR stops working and everyone who joined with it is blocked. Anyone THEY brought in goes to the manager to decide.'))return;
     const {error}=await sb.rpc('hub_end_invite',{p_token:tok,p_code:x.dataset.end});if(error)return toast(error.message);
-    if(LS(IKEY())===x.dataset.end)LS(IKEY(),null);toast('Invite turned off');openQr()});
+    if(LS(IKEY())===x.dataset.end)LS(IKEY(),null);toast('Invite turned off');await loadDevices();showQr();if(!$('qrMini').hidden)openQr()});
   renderPeople();return mine}
 async function makeInvite(){const {data,error}=await sb.rpc('hub_make_invite',{p_token:tok,p_days:+$('qrDays').value,p_max:+$('qrMax').value,p_pass:+$('qrPass').value});
   if(error){toast(/hub_make_invite/.test(error.message)?'Run the v11 SQL first':error.message);return null}LS(IKEY(),data.code);showQr();return data.code}
@@ -263,7 +265,7 @@ async function openQr(){fitMax();$('qrName').textContent=uname(user);$('qrBig').
   showQr()}
 $('qrMini').onclick=openQr;
 $('qrRetGo').onclick=async()=>{const n=+$('qrRetN').value,g=giveable();if(!confirm('Give back '+n+' invite'+(n>1?'s':'')+'? '+(g.kind==='stream'?'They go back to the shared pool for others to use.':'They go back to the person who invited you.')+' You can\'t undo this yourself.'))return;
-  const {error}=await sb.rpc('hub_return_invites',{p_token:tok,p_n:n});if(error)return toast(error.message);toast('Gave back '+n);await loadDevices();openQr()};
+  const {error}=await sb.rpc('hub_return_invites',{p_token:tok,p_n:n});if(error)return toast(error.message);toast('Gave back '+n);await loadDevices();showQr();if(!$('qrMini').hidden)openQr()};
 $('qrBig').onclick=e=>{if(e.target.id==='qrBig')$('qrBig').hidden=true};
 $('qrNew').onclick=async()=>{if(await makeInvite())openQr()};
 async function autoJoin(){const m=location.hash.match(/^#join=([A-Za-z0-9]+)$/);if(!m)return;history.replaceState(null,'',location.pathname);
@@ -285,7 +287,7 @@ async function loadDevices(){
   if(saved&&saved.token){const {data:bl}=await sb.rpc('hub_am_blocked',{p_token:saved.token});if(bl===true){LS(LKEY(),null);try{localStorage.removeItem('hub-via-invite')}catch(_){}await sb.auth.signOut();toast('Your access to this board was turned off.');throw new Error('Your access to this board was turned off.')}}
   try{mgrMode=LS('hub-mgrmode-'+user.id)!=='off'}catch(_){}
   if(saved&&saved.token){const {data:me}=await sb.rpc('hub_me',{p_token:saved.token});if(me&&me.id){cur=me.name;isMgr=!!me.is_manager;tok=saved.token}else LS(LKEY(),null)}
-  await inviteGate();renderDevices()}
+  await inviteGate();try{const {data:iv}=await sb.from('hub_invites').select('*');if(iv)invCache=iv}catch(_){}renderDevices()}
 function renderDevices(){
   {const nr=devices.filter(d=>d.needs_review&&!d.blocked).length,mb=$('manage');mb.textContent=nr&&isMgr&&mgrMode?'Manage users ⚠ '+nr:'Manage users';mb.style.color=nr&&isMgr&&mgrMode?'#e11d48':'';
    if(nr&&isMgr&&mgrMode&&renderDevices.lastNr!==nr){toast('⚠ '+nr+' '+(nr>1?'people need':'person needs')+' your decision in Manage users');}renderDevices.lastNr=nr}
