@@ -162,7 +162,7 @@ body.hasqr .hdr{padding-right:58px}
 <details class="qrmore"><summary>Invites</summary>
 <div class="qrrow">Works for <select id="qrDays"><option value="0">no limit</option><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option></select>
  · <select id="qrMax"><option value="0">any number</option><option value="1">1 person</option><option value="5">5 people</option><option value="20">20 people</option></select></div>
-<p class="qrs" id="qrLeft" style="text-align:left"></p><button id="qrNew">Make new invite QR</button><div id="qrList"></div><div id="qrPeople" style="margin-top:10px"></div></details></div></div>
+<div class="qrrow">People who scan it: <select id="qrPass"><option value="0">just join</option></select></div><p class="qrs" id="qrLeft" style="text-align:left"></p><button id="qrNew">Make new invite QR</button><div id="qrList"></div><div id="qrPeople" style="margin-top:10px"></div></details></div></div>
 
 <script type="module">
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
@@ -206,7 +206,7 @@ async function inviteGate(){if(!user)return;let saved=null;try{saved=JSON.parse(
   if(bl===true){try{localStorage.removeItem('hub-via-invite');localStorage.removeItem(LKEY())}catch(_){}
     cur=null;tok=null;await sb.auth.signOut();note('aSt','Your access to this board was turned off.',true);toast('Your access to this board was turned off.');throw new Error('blocked')}
   const c=VIA();if(c&&tok){await sb.rpc('hub_tag_invite',{p_token:tok,p_code:c});try{localStorage.removeItem('hub-via-invite')}catch(_){}
-    const {data}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review').order('created_at');if(data)devices=data}}
+    const {data}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review,stream_code,stream_cap,stream_used').order('created_at');if(data)devices=data}}
 setInterval(()=>{if(user&&cur)inviteGate().catch(()=>{})},60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user&&cur)inviteGate().catch(()=>{})});
 const meDev=()=>devices.find(d=>d.name===cur)||{};
@@ -219,14 +219,14 @@ import('https://esm.sh/qrcode-generator@1.4.4').then(m=>{window._qr=m.default||m
 const IKEY=()=>'hub-invite-'+user.id;
 const joinUrl=c=>location.origin+'/#join='+c;
 function qrSvg(t,cell){const q=window._qr(0,'M');q.addData(t);q.make();return q.createSvgTag({cellSize:cell,margin:2,scalable:true})}
-function showQr(){const b=$('qrMini');if(!b)return;const me=cur?meDev():{};const ok=user&&cur&&window._qr&&(canRun()||me.allowance>0||!!LS(IKEY()));b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
+function showQr(){const b=$('qrMini');if(!b)return;const me=cur?meDev():{};const ok=user&&cur&&window._qr&&(canRun()||me.allowance>0||(me.stream_cap>(me.stream_used||0))||!!LS(IKEY()));b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
 const fmt=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
-function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<new Date())||(i.max_uses&&i.uses>=i.max_uses);
+function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<new Date())||(i.max_uses&&(i.uses>=i.max_uses||(!i.pool_code&&i.pool_used>=i.max_uses)));
   const why=!i.active?'turned off':dead?(i.max_uses&&i.uses>=i.max_uses?'used up':'expired'):(i.expires_at?'until '+fmt(i.expires_at):'no end date');
-  return {dead,txt:`${i.uses}${i.max_uses?'/'+i.max_uses:''} joined · ${why}`}}
+  const pool=!i.pool_code&&i.max_uses&&i.pool_used>i.uses?` · stream ${i.pool_used}/${i.max_uses}`:'';return {dead,txt:`${i.uses}${i.max_uses?'/'+i.max_uses:''} joined${pool} · ${why}${i.can_pass?' · can pass '+i.can_pass:''}${i.pool_code?' · from '+i.pool_code:''}`}}
 async function loadInvites(){const {data,error}=await sb.from('hub_invites').select('*').order('created_at',{ascending:false});
   if(error){$('qrList').innerHTML='<p class="qrs">Run the v11 SQL first.</p>';return[]}
-  const mine=data.filter(i=>canRun()||canControl(i.made_by));
+  invCache=data;fitMax();const mine=data.filter(i=>canRun()||canControl(i.made_by));
   $('qrList').innerHTML=mine.map(i=>{const l=invLine(i);return`<div class="qrinv${l.dead?' off':''}"><span><b>${esc(i.code)}</b><br>${l.txt} · by ${esc(i.created_by||'')}${(()=>{const w=devices.filter(d=>d.invite_code===i.code).map(d=>d.name);return w.length?'<br>Joined: '+w.map(esc).join(', '):''})()}</span><span>${!l.dead&&canRun()?`<button data-lim="${esc(i.code)}" data-n="${i.max_uses||0}" data-u="${i.uses}">Limit</button>`:''}${l.dead?'':`<button data-end="${esc(i.code)}">Turn off</button>`}</span></div>`}).join('')||'<p class="qrs">No invites yet.</p>';
   $('qrList').querySelectorAll('[data-lim]').forEach(x=>x.onclick=async()=>{const v=prompt('How many people can join with '+x.dataset.lim+'? ('+x.dataset.u+' already joined. Type 0 for no limit.)',x.dataset.n);if(v===null)return;const n=parseInt(v,10);if(isNaN(n)||n<0)return toast('Type a number');
     const {error}=await sb.rpc('hub_set_invite_limit',{p_token:tok,p_code:x.dataset.lim,p_max:n});if(error)return toast(error.message);toast('Limit updated. Same QR, new limit.');openQr()});
@@ -234,11 +234,19 @@ async function loadInvites(){const {data,error}=await sb.from('hub_invites').sel
     const {error}=await sb.rpc('hub_end_invite',{p_token:tok,p_code:x.dataset.end});if(error)return toast(error.message);
     if(LS(IKEY())===x.dataset.end)LS(IKEY(),null);toast('Invite turned off');openQr()});
   renderPeople();return mine}
-async function makeInvite(){const {data,error}=await sb.rpc('hub_make_invite',{p_token:tok,p_days:+$('qrDays').value,p_max:+$('qrMax').value});
+async function makeInvite(){const {data,error}=await sb.rpc('hub_make_invite',{p_token:tok,p_days:+$('qrDays').value,p_max:+$('qrMax').value,p_pass:+$('qrPass').value});
   if(error){toast(/hub_make_invite/.test(error.message)?'Run the v11 SQL first':error.message);return null}LS(IKEY(),data.code);showQr();return data.code}
-function fitMax(){const sel=$('qrMax');if(canRun()){if(!sel.querySelector('[value="0"]'))sel.innerHTML='<option value="0">any number</option><option value="1">1 person</option><option value="5">5 people</option><option value="20">20 people</option>';$('qrLeft').textContent='';return}
-  const n=meDev().allowance||0;sel.innerHTML=n?Array.from({length:n},(_,k)=>`<option value="${k+1}">${k+1} ${k?'people':'person'}</option>`).join(''):'<option value="0">none left</option>';
-  $('qrLeft').textContent='You can invite '+n+' more.';$('qrNew').disabled=!n}
+let invCache=[];
+function streamLeft(){const me=meDev();if(!me.stream_code)return 0;const r=invCache.find(i=>i.code===me.stream_code);if(!r||!r.active)return 0;
+  const pool=r.max_uses==null?1e5:Math.max(r.max_uses-r.pool_used,0);return Math.max(Math.min(pool,(me.stream_cap||0)-(me.stream_used||0)),0)}
+function giveable(){const me=meDev();if(canRun())return {n:Infinity,kind:'mgr'};if(me.allowance>0)return {n:me.allowance,kind:'allow'};const s=streamLeft();return {n:s,kind:s?'stream':'none'}}
+function fitPass(){const g=giveable(),mx=+$('qrMax').value||0;let top=g.kind==='mgr'?(mx?mx-1:20):Math.max((g.kind==='stream'?g.n:mx)-1,0);if(g.kind!=='mgr'&&g.kind!=='stream')top=Math.max(mx-1,0);
+  const keep=+$('qrPass').value||0;$('qrPass').innerHTML='<option value="0">just join</option>'+Array.from({length:top},(_,k)=>`<option value="${k+1}">join + can pass on up to ${k+1}</option>`).join('');$('qrPass').value=Math.min(keep,top)}
+function fitMax(){const sel=$('qrMax'),g=giveable();
+  if(g.kind==='mgr'){if(!sel.querySelector('[value="0"]'))sel.innerHTML='<option value="0">any number</option><option value="1">1 person</option><option value="2">2 people</option><option value="3">3 people</option><option value="5">5 people</option><option value="10">10 people</option><option value="20">20 people</option>';$('qrLeft').textContent=''}
+  else{const n=Math.min(g.n,50);sel.innerHTML=n?Array.from({length:n},(_,k)=>`<option value="${k+1}">${k+1} ${k?'people':'person'}</option>`).join(''):'<option value="0">none left</option>';
+    $('qrLeft').textContent=g.kind==='stream'?'You can pass on '+g.n+' more spot'+(g.n===1?'':'s')+' from the invite you joined with. They come out of the same shared pool.':'You can invite '+g.n+' more.';$('qrNew').disabled=!n}
+  sel.onchange=fitPass;fitPass()}
 function renderPeople(){const me=meDev();const below=devices.filter(d=>!d.is_manager&&d.id!==me.id&&(canRun()||isAbove(me.id,d.id)));
   $('qrPeople').innerHTML=below.length?'<b>People below you</b>'+below.map(d=>`<div class="qrinv${d.blocked?' off':''}"><span>${esc(d.name)}${d.blocked?' · blocked':d.needs_review?' · ⚠ needs review':''}<br>Can invite ${d.allowance||0}</span>${d.blocked?'':`<span><button data-give="${d.id}">+1</button>${canRun()?`<button data-take="${d.id}">−1</button>`:''}<button data-blk="${d.id}" style="color:#b91c1c">Block</button></span>`}</div>`).join(''):'';
   $('qrPeople').querySelectorAll('[data-give],[data-take]').forEach(x=>x.onclick=async()=>{const {error}=await sb.rpc('hub_give_allowance',{p_token:tok,p_id:x.dataset.give||x.dataset.take,p_n:x.dataset.give?1:-1});if(error)return toast(error.message);await loadDevices();openQr()});
@@ -266,7 +274,7 @@ let mgrMode=true,isMgr=false,tok=null,lk={step:1,name:'',rec:false};
 const LKEY=()=>'hub-lock-'+user.id;
 const rnd=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join('');
 async function loadDevices(){
-  const {data,error}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review').order('created_at');if(error)throw error;devices=data;
+  const {data,error}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review,stream_code,stream_cap,stream_used').order('created_at');if(error)throw error;devices=data;
   let saved=null;try{saved=JSON.parse(LS(LKEY())||'null')}catch(_){}
   cur=null;isMgr=false;tok=null;
   if(saved&&saved.token){const {data:bl}=await sb.rpc('hub_am_blocked',{p_token:saved.token});if(bl===true){LS(LKEY(),null);try{localStorage.removeItem('hub-via-invite')}catch(_){}await sb.auth.signOut();toast('Your access to this board was turned off.');throw new Error('Your access to this board was turned off.')}}
