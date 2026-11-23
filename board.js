@@ -169,8 +169,8 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   async function upsertProfile() { await sb.from('hub_profiles').upsert({user_id: me, username: displayName, updated_at: new Date().toISOString()}); }
   async function loadProjects() {
     const {data} = token() ? await sb.rpc('hub_my_projects', {p_token: token()}) : await sb.from('hub_projects').select('*').order('created_at');
-    projects = (data || []).map(p => p.name === displayName + "'s board" ? {...p, name: 'General thread'} : p);
-    if (!projects.length && !autoMade) { autoMade = true; const {data} = await sb.rpc('hub_create_project', {p_name: 'General thread', p_token: token() || null}); if (data) { projects = [data]; } }
+    projects = (data || []).map(p => /'s board$/i.test(p.name || '') || p.name === 'General thread' ? {...p, name: 'General board'} : p);
+    if (!projects.length && !autoMade) { autoMade = true; const {data} = await sb.rpc('hub_create_project', {p_name: 'General board', p_token: token() || null}); if (data) { projects = [data]; } }
     if (!projects.some(p => p.id === cur)) cur = projects[0]?.id || null;
   }
   async function loadUnread() {
