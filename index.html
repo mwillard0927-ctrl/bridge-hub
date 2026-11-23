@@ -224,7 +224,7 @@ const fmt=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'
 function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<new Date())||(i.max_uses&&(i.uses>=i.max_uses||(!i.pool_code&&i.pool_used>=i.max_uses)));
   const why=!i.active?'turned off':dead?(i.max_uses&&i.uses>=i.max_uses?'used up':'expired'):(i.expires_at?'until '+fmt(i.expires_at):'no end date');
   const pool=!i.pool_code&&i.max_uses&&i.pool_used>i.uses?` · stream ${i.pool_used}/${i.max_uses}`:'';return {dead,txt:`${i.uses}${i.max_uses?'/'+i.max_uses:''} joined${pool} · ${why}${i.can_pass?' · can pass '+i.can_pass:''}${i.pool_code?' · from '+i.pool_code:''}`}}
-async function loadInvites(){const {data,error}=await sb.from('hub_invites').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review,stream_code,stream_cap,stream_used').order('created_at',{ascending:false});
+async function loadInvites(){const {data,error}=await sb.from('hub_invites').select('*').order('created_at',{ascending:false});
   if(error){$('qrList').innerHTML='<p class="qrs">Run the v11 SQL first.</p>';return[]}
   invCache=data;fitMax();const mine=data.filter(i=>canRun()||canControl(i.made_by));
   $('qrList').innerHTML=mine.map(i=>{const l=invLine(i);return`<div class="qrinv${l.dead?' off':''}"><span><b>${esc(i.code)}</b><br>${l.txt} · by ${esc(i.created_by||'')}${(()=>{const w=devices.filter(d=>d.invite_code===i.code).map(d=>d.name);return w.length?'<br>Joined: '+w.map(esc).join(', '):''})()}</span><span>${!l.dead&&canRun()?`<button data-lim="${esc(i.code)}" data-n="${i.max_uses||0}" data-u="${i.uses}">Limit</button>`:''}${l.dead?'':`<button data-end="${esc(i.code)}">Turn off</button>`}</span></div>`}).join('')||'<p class="qrs">No invites yet.</p>';
@@ -356,7 +356,7 @@ async function cleanup(){
   const paths=data.filter(d=>d.path).map(d=>d.path);if(paths.length)await sb.storage.from('hub').remove(paths);
   await sb.from('hub_drops').delete().in('id',data.map(d=>d.id));
 }
-async function loadDrops(){const {data,error}=await sb.from('hub_drops').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review,stream_code,stream_cap,stream_used').order('created_at',{ascending:false}).limit(300);if(error)throw error;items=data.map(norm);render()}
+async function loadDrops(){const {data,error}=await sb.from('hub_drops').select('*').order('created_at',{ascending:false}).limit(300);if(error)throw error;items=data.map(norm);render()}
 async function fileUrl(x){if(urls[x.id])return urls[x.id];const {data,error}=await sb.storage.from('hub').createSignedUrl(x.path,3600);if(error)throw error;return urls[x.id]=data.signedUrl}
 function render(){
   const L=items.filter(x=>filt==='all'||x.from===filt).sort((a,b)=>b.at-a.at);
