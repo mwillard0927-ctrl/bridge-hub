@@ -206,7 +206,7 @@ async function inviteGate(){if(!user)return;let saved=null;try{saved=JSON.parse(
   if(bl===true){try{localStorage.removeItem('hub-via-invite');localStorage.removeItem(LKEY())}catch(_){}
     cur=null;tok=null;await sb.auth.signOut();note('aSt','Your access to this board was turned off.',true);toast('Your access to this board was turned off.');throw new Error('blocked')}
   const c=VIA();if(c&&tok){await sb.rpc('hub_tag_invite',{p_token:tok,p_code:c});try{localStorage.removeItem('hub-via-invite')}catch(_){}
-    const {data}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review,stream_code,stream_cap,stream_used').order('created_at');if(data)devices=data}}
+    const {data}=await sb.from('hub_devices').select('*').order('created_at');if(data)devices=data}}
 setInterval(()=>{if(user&&cur)inviteGate().catch(()=>{})},60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user&&cur)inviteGate().catch(()=>{})});
 const meDev=()=>devices.find(d=>d.name===cur)||{};
@@ -277,7 +277,7 @@ let mgrMode=true,isMgr=false,tok=null,lk={step:1,name:'',rec:false};
 const LKEY=()=>'hub-lock-'+user.id;
 const rnd=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join('');
 async function loadDevices(){
-  const {data,error}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review,stream_code,stream_cap,stream_used').order('created_at');if(error)throw error;devices=data;
+  const {data,error}=await sb.from('hub_devices').select('*').order('created_at');if(error)throw error;devices=data;
   let saved=null;try{saved=JSON.parse(LS(LKEY())||'null')}catch(_){}
   cur=null;isMgr=false;tok=null;
   if(saved&&saved.token){const {data:bl}=await sb.rpc('hub_am_blocked',{p_token:saved.token});if(bl===true){LS(LKEY(),null);try{localStorage.removeItem('hub-via-invite')}catch(_){}await sb.auth.signOut();toast('Your access to this board was turned off.');throw new Error('Your access to this board was turned off.')}}
@@ -436,7 +436,7 @@ $('dest').onfocus=syncDest;
 async function enter(){
   $('auth').hidden=true;$('guide').hidden=true;$('app').hidden=false;$('who').hidden=false;$('uname').textContent='@'+uname(user);
   if(!board)board=mountBoard({sb,user,displayName:uname(user),root:$('vBoard'),toast,device:()=>cur||'',devices:()=>devices.map(d=>d.name),token:()=>tok||'',isManager:()=>isMgr&&mgrMode,onUnread:n=>{$('bdN').hidden=!n;$('bdN').textContent=n;syncDest()}});
-  try{await loadDevices();await cleanup();await loadDrops()}catch(e){note('st','Could not load: '+e.message,true);return}
+  try{await loadDevices();await cleanup();await loadDrops()}catch(e){toast('Could not load: '+e.message);$('main').hidden=false;note('st','Could not load: '+e.message,true);return}
   if(chan)sb.removeChannel(chan);
   chan=sb.channel('hub-'+user.id).on('postgres_changes',{event:'*',schema:'public',table:'hub_drops',filter:'user_id=eq.'+user.id},p=>{
     if(p.eventType==='INSERT'){if(!items.some(i=>i.id===p.new.id)){items.push(norm(p.new));if(p.new.from_device!==cur)toast('New drop from '+p.new.from_device)}}
