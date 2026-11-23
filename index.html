@@ -146,7 +146,7 @@ body.hasqr .hdr{padding-right:58px}
 <textarea id="text" placeholder="Paste text, a link, a list or code here"></textarea>
 <div class="row">
 <button class="go" id="send" disabled>Send text</button>
-<select id="dest" aria-label="Send to" style="font:600 15px var(--body);min-height:44px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);padding:0 10px"><option value="">→ Shelf</option></select>
+<select id="dest" aria-label="Send to" hidden style="font:600 15px var(--body);min-height:44px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);padding:0 10px"><option value="">→ Shelf</option></select>
 <label class="file">Add files<input type="file" id="file" multiple></label>
 <span class="count" id="cnt"></span>
 </div>
@@ -448,11 +448,10 @@ let board=null;
 function showTab(b){$('tabShelf').setAttribute('aria-pressed',!b);$('tabBoard').setAttribute('aria-pressed',b);$('vShelf').hidden=b;$('vBoard').hidden=!b;if(b&&board)board.refresh()}
 $('tabShelf').onclick=()=>showTab(false);$('tabBoard').onclick=()=>showTab(true);
 let shelfExcl=new Set(),destTouched=false;
-function syncDest(){const d=$('dest'),v=d.value;const ps=board?board.projects():[];d.innerHTML=ps.map(p=>`<option value="${p.id}">→ ${p.allowed?'🔒 ':''}${esc(p.name)}</option>`).join('')+'<option value="">→ Shelf only</option>';
-  d.value=destTouched&&[...d.options].some(o=>o.value===v)?v:(ps[0]?.id||'');renderAud()}
+function syncDest(){const d=$('dest');d.innerHTML='<option value="">→ Shelf</option>';d.value='';renderAud()}
 function audList(){const pr=board?board.projects().find(p=>p.id===$('dest').value):null;let L=devices.map(x=>x.name).filter(n=>n!==cur);if(pr&&pr.allowed)L=L.filter(n=>pr.allowed.some(a=>a.toLowerCase()===n.toLowerCase()));return L}
 function shelfRecip(){const L=audList();return L.every(n=>!shelfExcl.has(n))?null:L.filter(n=>!shelfExcl.has(n))}
-function renderAud(){const A=$('aud');if(!$('dest').value){A.innerHTML='<span>Shelf drops are visible to every user on this board.</span>';return}
+function renderAud(){const A=$('aud');if(!$('dest').value){A.innerHTML='<span>Anything on the shelf is visible to every user on this board.</span>';return}
   const L=audList();if(!L.length){A.innerHTML='';return}
   A.innerHTML='<span>Who sees it:</span>'+L.map(n=>`<button type="button" class="au2" data-au="${esc(n)}" aria-pressed="${!shelfExcl.has(n)}">${esc(n)}</button>`).join('')+`<b style="color:var(--ink)">${shelfRecip()?'🔒 Private':'🌐 Whole board'}</b>`}
 $('aud').onclick=e=>{const b=e.target.closest('[data-au]');if(!b)return;const n=b.dataset.au;shelfExcl.has(n)?shelfExcl.delete(n):shelfExcl.add(n);renderAud()};
