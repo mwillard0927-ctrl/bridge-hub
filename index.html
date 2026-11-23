@@ -286,7 +286,7 @@ async function loadDevices(){
   cur=null;isMgr=false;tok=null;
   if(saved&&saved.token){const {data:bl}=await sb.rpc('hub_am_blocked',{p_token:saved.token});if(bl===true){LS(LKEY(),null);try{localStorage.removeItem('hub-via-invite')}catch(_){}await sb.auth.signOut();toast('Your access to this board was turned off.');throw new Error('Your access to this board was turned off.')}}
   try{mgrMode=LS('hub-mgrmode-'+user.id)!=='off'}catch(_){}
-  if(saved&&saved.token){const {data:me}=await sb.rpc('hub_me',{p_token:saved.token});if(me&&me.id){cur=me.name;isMgr=!!me.is_manager;tok=saved.token}else LS(LKEY(),null)}
+  if(saved&&saved.token){const {data:me,error:meErr}=await sb.rpc('hub_me',{p_token:saved.token});if(me&&me.id){cur=me.name;isMgr=!!me.is_manager;tok=saved.token}else if(meErr){throw new Error('Could not check your name: '+meErr.message)}}
   await inviteGate();try{const {data:iv}=await sb.from('hub_invites').select('*');if(iv)invCache=iv}catch(_){}renderDevices()}
 function renderDevices(){
   {const nr=devices.filter(d=>d.needs_review&&!d.blocked).length,mb=$('manage');mb.textContent=nr&&isMgr&&mgrMode?'Manage users ⚠ '+nr:'Manage users';mb.style.color=nr&&isMgr&&mgrMode?'#e11d48':'';
