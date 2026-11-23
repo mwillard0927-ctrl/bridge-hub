@@ -3,6 +3,8 @@
 const TAGS = ['Note', 'Idea', 'Question', 'Decision', 'Urgent'];
 const TAGC = {Note: '#64748b', Idea: '#0e7490', Question: '#7c3aed', Decision: '#0f7a4a', Urgent: '#b91c1c'};
 const MAXF = 10 * 1048576;
+const VAPID = 'BKbz7rC-uR67434_nUq_hP1VuAYzbM9iza4cCHlDiGbsapj1Al9S6qIV0SK7_ka1ZF8eO-LLJ6Y8j0f4DEY5Uf4';
+const b64u = s => { const p = '='.repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, c => c.charCodeAt(0)); };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const ago = t => { const s = (Date.now() - new Date(t)) / 1000; if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + ' min ago'; if (s < 86400) return Math.floor(s / 3600) + ' h ago'; return new Date(t).toLocaleDateString('en-US', {month: 'short', day: 'numeric'}) };
 const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
@@ -85,7 +87,7 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   if (!document.getElementById('bd-css')) { const st = document.createElement('style'); st.id = 'bd-css'; st.textContent = CSS; document.head.append(st); }
   root.classList.add('bd');
   const me = user.id, myName = (displayName || 'user').toLowerCase();
-  let votes = [], q = '', qUser = '', calMonth = null, calSel = null, gallery = false, ptype = 'post', knownIds = null, alertsOn = false, pExcl = new Set(), eExcl = new Set(), myViews = new Set(), opens = [], lastSeen = {}, prevReads = null, newReads = 0, excl = new Set(), autoMade = false, projects = [], cur = null, members = [], names = {}, posts = [], replies = [], views = [], tab = 'board', filt = 'all', openId = null, replyTo = null, unread = {}, chan = null, urls = {}, busy = false, tmr = null;
+  let pushOn = false, votes = [], q = '', qUser = '', calMonth = null, calSel = null, gallery = false, ptype = 'post', knownIds = null, alertsOn = false, pExcl = new Set(), eExcl = new Set(), myViews = new Set(), opens = [], lastSeen = {}, prevReads = null, newReads = 0, excl = new Set(), autoMade = false, projects = [], cur = null, members = [], names = {}, posts = [], replies = [], views = [], tab = 'board', filt = 'all', openId = null, replyTo = null, unread = {}, chan = null, urls = {}, busy = false, tmr = null;
   try { cur = localStorage.getItem('bd-cur-' + me) } catch (_) {}
 
   const nm = id => names[id] || 'someone';
@@ -120,12 +122,26 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   const newProjForm = () => `<div class="panel"><b>Start a project</b><div class="row"><input type="text" id="bd-nx" placeholder="Project name" maxlength="60" style="flex:1 1 200px"><button class="go" data-x="new-go">Create</button></div><div class="tagbar" id="bd-pch">${projChips(pExcl, 'data-pd')}</div></div>`;
   function notify(title, body, pid, tagged) {
     if (tagged) title = '🏷 ' + title + ' (you were tagged)';
+    if (pushOn && document.hidden) return;
     if (alertsOn && 'Notification' in window && Notification.permission === 'granted' && document.hidden && navigator.serviceWorker) {
       navigator.serviceWorker.ready.then(r => r.showNotification(title, {body, tag: pid, data: {url: location.origin + location.pathname}, icon: 'icon.svg'})).catch(() => {});
     } else if (!document.hidden) toast(title);
   }
   try { alertsOn = localStorage.getItem('bd-alerts-' + me) === 'on' && 'Notification' in window && Notification.permission === 'granted'; } catch (_) {}
-  if (alertsOn && navigator.serviceWorker) navigator.serviceWorker.register('sw.js').catch(() => {});
+  async function subscribePush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !token()) return false;
+    const reg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64u(VAPID)});
+    const j = sub.toJSON();
+    const {error} = await sb.rpc('hub_save_push', {p_token: token(), p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth});
+    if (error) throw error; pushOn = true; return true;
+  }
+  async function unsubscribePush() {
+    try { const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && await reg.pushManager.getSubscription(); if (sub) { await sb.rpc('hub_remove_push', {p_endpoint: sub.endpoint}); await sub.unsubscribe(); } } catch (_) {}
+    pushOn = false;
+  }
+  if (alertsOn) setTimeout(() => subscribePush().catch(() => {}), 1500);
   const dkey = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
   const evWhen = t => new Date(t).toLocaleString('en-US', {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
   const datesOf = p => [p.due, p.event_at ? dkey(p.event_at) : null].filter(Boolean);
@@ -393,10 +409,12 @@ export function mountBoard({sb, user, displayName, root, device = () => '', devi
   async function act(x, b) {
     const p = openId && posts.find(q => q.id === openId);
     if (x === 'alerts') {
-      if (alertsOn) { alertsOn = false; try { localStorage.setItem('bd-alerts-' + me, 'off') } catch (_) {} render(); return toast('Alerts off'); }
-      const perm = await Notification.requestPermission(); if (perm !== 'granted') return toast('Alerts are blocked. Allow notifications for this site in your browser settings.');
-      if (navigator.serviceWorker) await navigator.serviceWorker.register('sw.js').catch(() => {});
-      alertsOn = true; try { localStorage.setItem('bd-alerts-' + me, 'on') } catch (_) {} render(); toast('Alerts on'); return;
+      if (alertsOn) { alertsOn = false; try { localStorage.setItem('bd-alerts-' + me, 'off') } catch (_) {} await unsubscribePush(); render(); return toast('Alerts off'); }
+      if (!('PushManager' in window)) toast(/iPhone|iPad/.test(navigator.userAgent) ? 'On iPhone, open Bridge Hub from the home-screen icon (added from Safari) to get phone alerts.' : 'This browser can only show alerts while the app is open.');
+      const perm = await Notification.requestPermission(); if (perm !== 'granted') return toast('Alerts are blocked. Allow notifications for this site in your phone settings.');
+      alertsOn = true; try { localStorage.setItem('bd-alerts-' + me, 'on') } catch (_) {}
+      try { if (await subscribePush()) toast('Phone alerts on: you\'ll get notified even when the app is closed'); else toast('Alerts on while the app is open'); } catch (e) { toast('Alerts on while the app is open (' + e.message + ')'); }
+      render(); return;
     }
     if (x === 'new') { pExcl = new Set(); const f = root.querySelector('#bd-form'); f.innerHTML = newProjForm(); f.querySelector('input').focus(); }
     else if (x === 'join') {
