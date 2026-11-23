@@ -162,7 +162,7 @@ body.hasqr .hdr{padding-right:58px}
 <details class="qrmore"><summary>Invites</summary>
 <div class="qrrow">Works for <select id="qrDays"><option value="0">no limit</option><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option></select>
  · <select id="qrMax"><option value="0">any number</option><option value="1">1 person</option><option value="5">5 people</option><option value="20">20 people</option></select></div>
-<button id="qrNew">Make new invite QR</button><div id="qrList"></div></details></div></div>
+<p class="qrs" id="qrLeft" style="text-align:left"></p><button id="qrNew">Make new invite QR</button><div id="qrList"></div><div id="qrPeople" style="margin-top:10px"></div></details></div></div>
 
 <script type="module">
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
@@ -198,38 +198,53 @@ $('aGo').onclick=async()=>{
   $('p').value=$('p2').value='';
 };
 $('out').onclick=async()=>{await sb.auth.signOut()};
-/* ---------- invite gate: joined by a turned-off QR = blocked ---------- */
+/* ---------- invite chain: blocked check, tagging ---------- */
 const VIA=()=>{try{return localStorage.getItem('hub-via-invite')}catch(_){return null}};
-async function inviteGate(){const c=VIA();if(!c||!user)return;
-  if(tok)await sb.rpc('hub_tag_invite',{p_token:tok,p_code:c});
-  const {data:ok,error}=await sb.rpc('hub_invite_ok',{p_code:c});if(error||ok!==false)return;
-  try{localStorage.removeItem('hub-via-invite');localStorage.setItem('hub-blocked',uname(user));localStorage.removeItem(LKEY())}catch(_){}
-  cur=null;tok=null;await sb.auth.signOut();note('aSt','Your access to this board was turned off by a manager.',true);throw new Error('blocked')}
-setInterval(()=>{if(user&&VIA())inviteGate().catch(()=>{})},60000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user&&VIA())inviteGate().catch(()=>{})});
+async function inviteGate(){if(!user)return;let saved=null;try{saved=JSON.parse(LS(LKEY())||'null')}catch(_){}
+  const t=tok||saved?.token;if(!t)return;
+  const {data:bl}=await sb.rpc('hub_am_blocked',{p_token:t});
+  if(bl===true){try{localStorage.removeItem('hub-via-invite');localStorage.removeItem(LKEY())}catch(_){}
+    cur=null;tok=null;await sb.auth.signOut();note('aSt','Your access to this board was turned off.',true);toast('Your access to this board was turned off.');throw new Error('blocked')}
+  const c=VIA();if(c&&tok){await sb.rpc('hub_tag_invite',{p_token:tok,p_code:c});try{localStorage.removeItem('hub-via-invite')}catch(_){}
+    const {data}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review').order('created_at');if(data)devices=data}}
+setInterval(()=>{if(user&&cur)inviteGate().catch(()=>{})},60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user&&cur)inviteGate().catch(()=>{})});
+const meDev=()=>devices.find(d=>d.name===cur)||{};
+const isAbove=(a,b)=>{let d=devices.find(x=>x.id===b),n=0;while(d&&d.invited_by&&n++<50){if(d.invited_by===a)return true;d=devices.find(x=>x.id===d.invited_by)}return false};
+const canRun=()=>isMgr&&mgrMode;
+const canControl=madeBy=>canRun()||madeBy===meDev().id||(madeBy&&isAbove(meDev().id,madeBy));
 
 /* ---------- join QR (revocable invites) ---------- */
 import('https://esm.sh/qrcode-generator@1.4.4').then(m=>{window._qr=m.default||m;showQr()});
 const IKEY=()=>'hub-invite-'+user.id;
 const joinUrl=c=>location.origin+'/#join='+c;
 function qrSvg(t,cell){const q=window._qr(0,'M');q.addData(t);q.make();return q.createSvgTag({cellSize:cell,margin:2,scalable:true})}
-function showQr(){const b=$('qrMini');if(!b)return;const ok=user&&cur&&isMgr&&mgrMode&&window._qr;b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
+function showQr(){const b=$('qrMini');if(!b)return;const me=cur?meDev():{};const ok=user&&cur&&window._qr&&(canRun()||me.allowance>0||!!LS(IKEY()));b.hidden=!ok;document.body.classList.toggle('hasqr',!!ok);if(!ok)return;const c=LS(IKEY());b.innerHTML=c?qrSvg(joinUrl(c),2):'<span style="font:700 11px/38px sans-serif;color:#111">QR</span>'}
 const fmt=d=>new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
 function invLine(i){const dead=!i.active||(i.expires_at&&new Date(i.expires_at)<new Date())||(i.max_uses&&i.uses>=i.max_uses);
   const why=!i.active?'turned off':dead?(i.max_uses&&i.uses>=i.max_uses?'used up':'expired'):(i.expires_at?'until '+fmt(i.expires_at):'no end date');
   return {dead,txt:`${i.uses}${i.max_uses?'/'+i.max_uses:''} joined · ${why}`}}
 async function loadInvites(){const {data,error}=await sb.from('hub_invites').select('*').order('created_at',{ascending:false});
   if(error){$('qrList').innerHTML='<p class="qrs">Run the v11 SQL first.</p>';return[]}
-  $('qrList').innerHTML=data.map(i=>{const l=invLine(i);return`<div class="qrinv${l.dead?' off':''}"><span><b>${esc(i.code)}</b><br>${l.txt} · by ${esc(i.created_by||'')}${(()=>{const w=devices.filter(d=>d.invite_code===i.code).map(d=>d.name);return w.length?'<br>Joined: '+w.map(esc).join(', '):''})()}</span>${l.dead?'':`<button data-end="${esc(i.code)}">Turn off</button>`}</div>`}).join('')||'<p class="qrs">No invites yet.</p>';
-  $('qrList').querySelectorAll('[data-end]').forEach(x=>x.onclick=async()=>{if(!confirm('Turn off invite '+x.dataset.end+'? That QR stops working, and everyone who joined with it is blocked from this board.'))return;
+  const mine=data.filter(i=>canRun()||canControl(i.made_by));
+  $('qrList').innerHTML=mine.map(i=>{const l=invLine(i);return`<div class="qrinv${l.dead?' off':''}"><span><b>${esc(i.code)}</b><br>${l.txt} · by ${esc(i.created_by||'')}${(()=>{const w=devices.filter(d=>d.invite_code===i.code).map(d=>d.name);return w.length?'<br>Joined: '+w.map(esc).join(', '):''})()}</span>${l.dead?'':`<button data-end="${esc(i.code)}">Turn off</button>`}</div>`}).join('')||'<p class="qrs">No invites yet.</p>';
+  $('qrList').querySelectorAll('[data-end]').forEach(x=>x.onclick=async()=>{if(!confirm('Turn off invite '+x.dataset.end+'? That QR stops working and everyone who joined with it is blocked. Anyone THEY brought in goes to the manager to decide.'))return;
     const {error}=await sb.rpc('hub_end_invite',{p_token:tok,p_code:x.dataset.end});if(error)return toast(error.message);
     if(LS(IKEY())===x.dataset.end)LS(IKEY(),null);toast('Invite turned off');openQr()});
-  return data}
+  renderPeople();return mine}
 async function makeInvite(){const {data,error}=await sb.rpc('hub_make_invite',{p_token:tok,p_days:+$('qrDays').value,p_max:+$('qrMax').value});
   if(error){toast(/hub_make_invite/.test(error.message)?'Run the v11 SQL first':error.message);return null}LS(IKEY(),data.code);showQr();return data.code}
-async function openQr(){$('qrName').textContent=uname(user);$('qrBig').hidden=false;const list=await loadInvites();
+function fitMax(){const sel=$('qrMax');if(canRun()){if(!sel.querySelector('[value="0"]'))sel.innerHTML='<option value="0">any number</option><option value="1">1 person</option><option value="5">5 people</option><option value="20">20 people</option>';$('qrLeft').textContent='';return}
+  const n=meDev().allowance||0;sel.innerHTML=n?Array.from({length:n},(_,k)=>`<option value="${k+1}">${k+1} ${k?'people':'person'}</option>`).join(''):'<option value="0">none left</option>';
+  $('qrLeft').textContent='You can invite '+n+' more.';$('qrNew').disabled=!n}
+function renderPeople(){const me=meDev();const below=devices.filter(d=>!d.is_manager&&d.id!==me.id&&(canRun()||isAbove(me.id,d.id)));
+  $('qrPeople').innerHTML=below.length?'<b>People below you</b>'+below.map(d=>`<div class="qrinv${d.blocked?' off':''}"><span>${esc(d.name)}${d.blocked?' · blocked':d.needs_review?' · ⚠ needs review':''}<br>Can invite ${d.allowance||0}</span>${d.blocked?'':`<span><button data-give="${d.id}">+1</button>${canRun()?`<button data-take="${d.id}">−1</button>`:''}<button data-blk="${d.id}" style="color:#b91c1c">Block</button></span>`}</div>`).join(''):'';
+  $('qrPeople').querySelectorAll('[data-give],[data-take]').forEach(x=>x.onclick=async()=>{const {error}=await sb.rpc('hub_give_allowance',{p_token:tok,p_id:x.dataset.give||x.dataset.take,p_n:x.dataset.give?1:-1});if(error)return toast(error.message);await loadDevices();openQr()});
+  $('qrPeople').querySelectorAll('[data-blk]').forEach(x=>x.onclick=async()=>{const n=devices.find(d=>d.id===x.dataset.blk)?.name;if(!confirm('Block '+n+'? Anyone they brought in goes to the manager to decide.'))return;
+    const {error}=await sb.rpc('hub_block_user',{p_token:tok,p_id:x.dataset.blk});if(error)return toast(error.message);toast(n+' blocked');await loadDevices();openQr()})}
+async function openQr(){fitMax();$('qrName').textContent=uname(user);$('qrBig').hidden=false;const list=await loadInvites();
   let c=LS(IKEY());const i=list.find(x=>x.code===c);if(!i||invLine(i).dead){LS(IKEY(),null);c=null}
-  if(!c&&!list.length)c=await makeInvite();
+  if(!c&&!list.length&&canRun())c=await makeInvite();
   if(c){$('qrSvg').innerHTML=qrSvg(joinUrl(c),8);const l=invLine(list.find(x=>x.code===c)||{active:true,uses:0});$('qrInfo').textContent='Code '+c+' · '+l.txt}
   else{$('qrSvg').innerHTML='';$('qrInfo').textContent='No active invite. Make a new one below.';$('qrBig').querySelector('details').open=true}
   showQr()}
@@ -249,20 +264,24 @@ let mgrMode=true,isMgr=false,tok=null,lk={step:1,name:'',rec:false};
 const LKEY=()=>'hub-lock-'+user.id;
 const rnd=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join('');
 async function loadDevices(){
-  const {data,error}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code').order('created_at');if(error)throw error;devices=data;
+  const {data,error}=await sb.from('hub_devices').select('id,name,created_at,claimed_at,is_manager,invite_code,invited_by,allowance,blocked,needs_review').order('created_at');if(error)throw error;devices=data;
   let saved=null;try{saved=JSON.parse(LS(LKEY())||'null')}catch(_){}
   cur=null;isMgr=false;tok=null;
+  if(saved&&saved.token){const {data:bl}=await sb.rpc('hub_am_blocked',{p_token:saved.token});if(bl===true){LS(LKEY(),null);try{localStorage.removeItem('hub-via-invite')}catch(_){}await sb.auth.signOut();toast('Your access to this board was turned off.');throw new Error('Your access to this board was turned off.')}}
   try{mgrMode=LS('hub-mgrmode-'+user.id)!=='off'}catch(_){}
   if(saved&&saved.token){const {data:me}=await sb.rpc('hub_me',{p_token:saved.token});if(me&&me.id){cur=me.name;isMgr=!!me.is_manager;tok=saved.token}else LS(LKEY(),null)}
   await inviteGate();renderDevices()}
 function renderDevices(){
+  {const nr=devices.filter(d=>d.needs_review&&!d.blocked).length,mb=$('manage');mb.textContent=nr&&isMgr&&mgrMode?'Manage users ⚠ '+nr:'Manage users';mb.style.color=nr&&isMgr&&mgrMode?'#e11d48':'';
+   if(nr&&isMgr&&mgrMode&&renderDevices.lastNr!==nr){toast('⚠ '+nr+' '+(nr>1?'people need':'person needs')+' your decision in Manage users');}renderDevices.lastNr=nr}
   const locked=!!cur;$('lock').hidden=locked;$('main').hidden=!locked;$('devbar').hidden=!locked;$('manage').hidden=!(isMgr&&mgrMode);if(!(isMgr&&mgrMode))$('mgr').hidden=true;
   showQr();if(!locked){renderLock();return}
   $('devs').innerHTML=`<span class="dev" style="--c:${color(cur)};background:var(--c);border-color:var(--c);color:#fff">🔒 ${esc(cur)}</span>${isMgr?`<span class="pill m">Manager</span><button id="mgrToggle" role="switch" aria-checked="${mgrMode}" class="sw${mgrMode?' on':''}"><span class="knob"></span><span class="swl">${mgrMode?'ON':'OFF'}</span></button>`:''}${!devices.some(d=>d.is_manager)?'<button class="dev add" id="becomeMgr">Become manager</button>':''}`;
   const mt=$('mgrToggle');if(mt)mt.onclick=()=>{mgrMode=!mgrMode;LS('hub-mgrmode-'+user.id,mgrMode?'on':'off');renderDevices();render();if(board)board.refresh();toast(mgrMode?'Manager mode on':'Manager mode off. You see what every user sees.')};
   const bm=$('becomeMgr');if(bm)bm.onclick=async()=>{if(bm.dataset.sure!=='1'){bm.dataset.sure='1';bm.textContent='Tap again to confirm';return}const {error}=await sb.rpc('hub_become_manager',{p_token:tok});if(error)return toast(error.message);await loadDevices();if(board)board.refresh();toast('You are now the manager')};
   if($('dest').options.length)renderAud();
-  $('mlist').innerHTML=devices.map(d=>`<div class="row" style="justify-content:space-between"><span><span class="dot" style="--c:${color(d.name)}"></span>${esc(d.name)}${d.is_manager?'<span class="pill m">Manager</span>':d.claimed_at?'<span class="pill">🔒 Locked</span>':'<span class="pill">Open</span>'}</span>${d.name!==cur?`<span class="row">${d.claimed_at?`<button data-act="unlock" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Unlock</button>`:''}${d.claimed_at?`<button data-act="make_manager" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Make manager</button>`:''}<button data-act="remove" data-id="${d.id}" style="color:var(--bad);min-height:34px;padding:2px 10px;font-size:13px">Remove</button></span>`:''}</div>`).join('');
+  const rev=devices.filter(d=>d.needs_review&&!d.blocked);
+  $('mlist').innerHTML=(rev.length?`<div class="card" style="border-color:#e11d48"><b>⚠ Needs your decision</b><p class="note" style="margin:0">Someone above these people was blocked. Keep them or block them (blocking sends anyone they invited here next).</p>${rev.map(d=>`<div class="row" style="justify-content:space-between"><span>${esc(d.name)}<small> · invited by ${esc(devices.find(x=>x.id===d.invited_by)?.name||'?')}</small></span><span class="row"><button data-rev="keep" data-id="${d.id}">Keep</button><button data-rev="block" data-id="${d.id}" style="color:var(--bad)">Block</button></span></div>`).join('')}</div>`:'')+devices.filter(d=>!d.blocked||1).map(d=>`<div class="row" style="justify-content:space-between"><span><span class="dot" style="--c:${color(d.name)}"></span>${esc(d.name)}${d.blocked?'<span class="pill" style="color:var(--bad)">Blocked</span>':d.is_manager?'<span class="pill m">Manager</span>':d.claimed_at?'<span class="pill">🔒 Locked</span>':'<span class="pill">Open</span>'}${!d.is_manager&&!d.blocked?`<small> · can invite ${d.allowance||0}</small>`:''}${d.invited_by?`<small> · via ${esc(devices.find(x=>x.id===d.invited_by)?.name||'?')}</small>`:''}</span>${d.name!==cur?`<span class="row">${d.claimed_at?`<button data-act="unlock" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Unlock</button>`:''}${d.claimed_at?`<button data-act="make_manager" data-id="${d.id}" style="min-height:34px;padding:2px 10px;font-size:13px">Make manager</button>`:''}<button data-act="remove" data-id="${d.id}" style="color:var(--bad);min-height:34px;padding:2px 10px;font-size:13px">Remove</button></span>`:''}</div>`).join('');
   $('filt').innerHTML=`<button data-f="all" aria-pressed="${filt==='all'}">All</button>`+devices.map(d=>`<button data-f="${esc(d.name)}" aria-pressed="${filt===d.name}">From ${esc(d.name)}</button>`).join('');
   upd();
 }
@@ -306,7 +325,8 @@ $('mAdd').onclick=async()=>{const n=$('mNew').value.trim();if(!n)return toast('T
   const {error}=await sb.rpc('hub_add_device',{p_token:tok,p_name:n});if(error)return toast(error.message);
   $('mNew').value='';await loadDevices();if(board)board.refresh();toast('Added '+n)};
 $('mNew').onkeydown=e=>{if(e.key==='Enter')$('mAdd').click()};
-$('mlist').onclick=async e=>{const b=e.target.closest('[data-act]');if(!b)return;
+$('mlist').onclick=async e=>{const r=e.target.closest('[data-rev]');if(r){const {error}=await sb.rpc('hub_review',{p_token:tok,p_id:r.dataset.id,p_block:r.dataset.rev==='block'});if(error)return toast(error.message);await loadDevices();return toast(r.dataset.rev==='block'?'Blocked':'Kept')}
+  const b=e.target.closest('[data-act]');if(!b)return;
   if(b.dataset.sure!=='1'){const o=b.textContent;b.dataset.sure='1';b.textContent='Tap again';setTimeout(()=>{if(b.isConnected){b.dataset.sure='';b.textContent=o}},3000);return}
   const {error}=await sb.rpc('hub_manage_device',{p_token:tok,p_device:b.dataset.id,p_action:b.dataset.act});
   if(error)return toast(error.message);await loadDevices();if(board)board.refresh();toast('Done')};
